@@ -30,14 +30,27 @@ print(any(is.na(GME)))
 train <- GME[1: 450,]
 test <- GME[451: nrow(GME),]
 
-# Calculate differenced data and convert data to data.table object
-train <- as.data.table(diff(as.matrix(train)))
+# Calculate differenced data 
+train <- diff(as.matrix(train))
+candleChart(as.xts(train), up.col = "blue", dn.col = "red", theme = "white")
+
+# Standardize data
+train <- scale(train)
+candleChart(as.xts(train), up.col = "blue", dn.col = "red", theme = "white", yrange = c(-6, 6))
+
+# Convert data to data.table object
+train <- as.data.table(train)
+
+# Visualize distributions of columns
+print(train[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
+  geom_histogram(bins = 35) + facet_wrap(vars(name)))
 
 # Add lagged columns to data
-add_lagged <- function(df, n){
-  lag_names <- map_chr(1:3, ~ sprintf("lag%d", .))
-  lag_names <- expand.grid(names(train), lag_names)
-  lag_names <- apply(lag_names, 1, function(v){paste(v[1], v[2], sep = "_")})
-  lag_names
+add_lagged <- function(dt, n){
+  lag_names <- map_chr(1:n, ~ sprintf("lag%d", .))
+  lag_names <- expand.grid(lag_names, names(train))
+  lag_names <- apply(lag_names, 1, function(v){paste(v[2], v[1], sep = "_")})
+  dt[, (lag_names) := shift(.SD, 1:n, type = "lag"), .SDcols = names(dt)]
 }
 
+add_lagged(train, 3)
