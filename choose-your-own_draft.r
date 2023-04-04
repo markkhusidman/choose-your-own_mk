@@ -26,31 +26,40 @@ candleChart(GME, up.col = "blue", dn.col = "red", theme = "white")
 # Make sure there are no missing values in data
 print(any(is.na(GME)))
 
-# Split data into training and holdout sets
-train <- GME[1: 450,]
+# Split data into traininging and holdout sets
+training <- GME[1: 450,]
 test <- GME[451: nrow(GME),]
 
 # Calculate differenced data 
-train <- diff(as.matrix(train))
-candleChart(as.xts(train), up.col = "blue", dn.col = "red", theme = "white")
+training <- diff(as.matrix(training))
+candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
 
 # Standardize data
-train <- scale(train)
-candleChart(as.xts(train), up.col = "blue", dn.col = "red", theme = "white", yrange = c(-6, 6))
+training <- scale(training)
+candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white", yrange = c(-6, 6))
 
 # Convert data to data.table object
-train <- as.data.table(train)
+training <- as.data.table(training)
 
 # Visualize distributions of columns
-print(train[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
+print(training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
   geom_histogram(bins = 35) + facet_wrap(vars(name)))
 
 # Add lagged columns to data
 add_lagged <- function(dt, n){
   lag_names <- map_chr(1:n, ~ sprintf("lag%d", .))
-  lag_names <- expand.grid(lag_names, names(train))
+  lag_names <- expand.grid(lag_names, names(training))
   lag_names <- apply(lag_names, 1, function(v){paste(v[2], v[1], sep = "_")})
   dt[, (lag_names) := shift(.SD, 1:n, type = "lag"), .SDcols = names(dt)]
 }
 
-add_lagged(train, 3)
+add_lagged(training, 3)
+
+# Add target column
+training[, target := shift(GME.Close, 1, type = "lead")]
+
+# Drop missing values
+training <- drop_na(training)
+
+# Train model
+model2 <- train(select(training, -target), training[, target], trControl = trainControl("oob"),method = "Rborist")
