@@ -4,6 +4,7 @@ if(!require(lubridate)) install.packages("lubridate", repos = "http://cran.us.r-
 if(!require(data.table)) install.packages("lubridate", repos = "http://cran.us.r-project.org")
 if(!require(quantmod)) install.packages("quantmod", repos = "http://cran.us.r-project.org")
 
+library(tictoc)
 library(tidyverse)
 library(caret)
 library(lubridate)
@@ -56,42 +57,45 @@ add_lagged <- function(dt, n){
   lag_names <- map_chr(1:n, ~ sprintf("lag%d", .))
   lag_names <- expand.grid(lag_names, names(training))
   lag_names <- apply(lag_names, 1, function(v){paste(v[2], v[1], sep = "_")})
-  dt[, (lag_names) := shift(.SD, 1:n, type = "lag"), .SDcols = names(dt)]
+  dt[, (lag_names) := data.table::shift(.SD, 1:n, type = "lag"), .SDcols = names(dt)]
 }
 
 add_lagged(training, 14)
 
 # Add target column
-training[, target := shift(GME.Close, 1, type = "lead")]
+training[, target := data.table::shift(GME.Close, 1, type = "lead")]
 
 # Drop missing values
 training <- drop_na(training)
 
+# Drop outliers
+training_clip <- training[apply(training < 5, 1, all),]
+
 # Train models
-tic()
-model <- train(select(training, -target), training[, target], 
-               trControl = trainControl("oob"), method = "Rborist")
-toc()
-
-tic()
-model2 <- train(select(training, -target), training[, target], 
-                trControl = trainControl("cv"), 
-                tuneGrid = data.frame(list(predFixed = c(2), minNode = c(3))), 
-                method = "Rborist")
-toc()
-
-tic()
-model3 <- train(select(training, -target), training[, target], 
-                trControl = trainControl("cv"), 
-                method = "enet")
-toc()
-
-
-tic()
-model4 <- train(select(training, -target), training[, target], 
-                trControl = trainControl("cv"), 
-                method = "xgbTree", verbosity = 0)
-toc()
+# tic()
+# model <- train(select(training, -target), training[, target], 
+#                trControl = trainControl("oob"), method = "Rborist")
+# toc()
+# 
+# tic()
+# model2 <- train(select(training, -target), training[, target], 
+#                 trControl = trainControl("cv"), 
+#                 tuneGrid = data.frame(list(predFixed = c(2), minNode = c(3))), 
+#                 method = "Rborist")
+# toc()
+# 
+# tic()
+# model3 <- train(select(training, -target), training[, target], 
+#                 trControl = trainControl("cv"), 
+#                 method = "enet")
+# toc()
+# 
+# 
+# tic()
+# model4 <- train(select(training, -target), training[, target], 
+#                 trControl = trainControl("cv"), 
+#                 method = "xgbTree", verbosity = 0)
+# toc()
 
 
 tic()
