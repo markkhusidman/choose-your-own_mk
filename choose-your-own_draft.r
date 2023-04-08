@@ -72,6 +72,7 @@ training <- drop_na(training)
 # Drop outliers
 training_clip <- training[apply(training < 5, 1, all),]
 
+
 # Train models
 
 model <- train(select(training, -target), training[, target],
@@ -99,35 +100,54 @@ model4 <- train(select(training_clip, -target), training_clip[, target],
 best_alpha <- model4$bestTune[,"alpha"]
 lambda_cv <- cv.glmnet(as.matrix(select(training_clip, -target)), training_clip[, target], 
                        alpha = best_alpha)
-best_lambda <- lambda_cv$lambda.min
+best_lambda2 <- lambda_cv$lambda.min
 
 
-
-# Evaluate model
-models <- list(model, model2, model3, model4)
-for(mdl in models){
-  pred <- ifelse("lambda" %in% names(mdl$bestTune),
-                 predict(mdl$finalModel, as.matrix(select(training, -target)),
-                                 s = best_lambda)[,1],
-                 predict(mdl$finalModel, as.matrix(select(training, -target))))
-  
-  # pred <- predict(mdl$finalModel, select(training, -target))
+get_train_pred <- function(model, lambda = NULL){
+  if(is.null(lambda)){
+    pred <- predict(model$finalModel, as.matrix(select(training, -target)))
+    
+  }
+  else{
+    pred <- predict(model$finalModel, as.matrix(select(training, -target)),
+                    s = lambda)[,1]
+  }
   pred <- (pred * train_sds[1]) + train_means[1]
-  pred <- as.numeric(GME$GME.Close[16:449]) + pred
-  observed <- as.numeric(GME$GME.Close[17:450])
-  print(sqrt(mean((pred - observed)^2)))
+  prior_vals <- as.numeric(GME$GME.Close[16:449])
+  pred <- prior_vals + pred
+  observed <- GME$GME.Close[17:450]
   
-  results <- data.frame(observed = observed, pred = pred, 
-                        baseline = as.numeric(GME$GME.Close[16:449]),
-                        ind = index(GME$GME.Close[17:450]))
-  
-  print(results[35:65,] |> pivot_longer(cols = c("observed", "pred"))
-        |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
-  
-  print(results[400:434,] |> pivot_longer(cols = c("observed", "pred"))
-        |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+  results <- data.frame(observed = as.numeric(observed), pred = pred, 
+                        baseline = prior_vals,
+                        ind = index(observed))
 }
 
+results <- get_train_pred(model)
+print(sqrt(mean((results$pred - results$observed)^2)))
+
+print(results[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+
+
+results <- get_train_pred(model2, lambda = best_lambda)
+print(sqrt(mean((results$pred - results$observed)^2)))
+
+print(results[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+
+
+results <- get_train_pred(model3)
+print(sqrt(mean((results$pred - results$observed)^2)))
+
+print(results[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+
+
+results <- get_train_pred(model4, lambda = best_lambda2)
+print(sqrt(mean((results$pred - results$observed)^2)))
+
+print(results[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
 
 
 # Create testing baseline model
