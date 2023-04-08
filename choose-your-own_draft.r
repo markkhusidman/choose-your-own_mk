@@ -37,11 +37,13 @@ candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
 
 # Create baseline model
 observed <- as.numeric(GME$GME.Close[2:450])
-baseline_pred_train <- as.numeric(GME$GME.Close[1:449]) + mean(training[, "GME.Close"])
+baseline_pred_train <- as.numeric(GME$GME.Close[1:449])
 baseline_rmse_train <- sqrt(mean((baseline_pred_train - observed)^2))
 print(baseline_rmse_train)
 
 # Standardize data
+train_sds <- apply(training, 2, sd)
+train_means <- colMeans(training)
 training <- scale(training)
 candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white", yrange = c(-6, 6))
 
@@ -55,7 +57,7 @@ print(training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
 # Add lagged columns to data
 add_lagged <- function(dt, n){
   lag_names <- map_chr(1:n, ~ sprintf("lag%d", .))
-  lag_names <- expand.grid(lag_names, names(training))
+  lag_names <- expand.grid(lag_names, names(dt))
   lag_names <- apply(lag_names, 1, function(v){paste(v[2], v[1], sep = "_")})
   dt[, (lag_names) := data.table::shift(.SD, 1:n, type = "lag"), .SDcols = names(dt)]
 }
@@ -68,45 +70,54 @@ training[, target := data.table::shift(GME.Close, 1, type = "lead")]
 # Drop missing values
 training <- drop_na(training)
 
-# Drop outliers
-training_clip <- training[apply(training < 5, 1, all),]
+# # Drop outliers
+# training_clip <- training[apply(training < 5, 1, all),]
 
 # Train models
-# tic()
-# model <- train(select(training, -target), training[, target], 
-#                trControl = trainControl("oob"), method = "Rborist")
-# toc()
-# 
-# tic()
-# model2 <- train(select(training, -target), training[, target], 
-#                 trControl = trainControl("cv"), 
-#                 tuneGrid = data.frame(list(predFixed = c(2), minNode = c(3))), 
-#                 method = "Rborist")
-# toc()
-# 
-# tic()
-# model3 <- train(select(training, -target), training[, target], 
-#                 trControl = trainControl("cv"), 
-#                 method = "enet")
-# toc()
-# 
-# 
-# tic()
-# model4 <- train(select(training, -target), training[, target], 
-#                 trControl = trainControl("cv"), 
-#                 method = "xgbTree", verbosity = 0)
-# toc()
-
-
 tic()
-model5 <- train(select(training, -target), training[, target], 
-                trControl = trainControl("cv"), 
-                tuneGrid = data.frame(list(k = 5:75)),
+model <- train(select(training, -target), training[, target],
+                trControl = trainControl("cv"),
+                tuneGrid = data.frame(list(k = 22)),
                 method = "knn")
 toc()
 
-# Evaluate model5
-observed <- as.numeric(GME$GME.Close[17:450])
-pred <- predict(model5$finalModel, select(training, -target))
+# Evaluate model
+pred <- predict(model$finalModel, as.matrix(select(training, -target)))
+pred <- (pred * train_sds[1]) + train_means[1]
 pred <- as.numeric(GME$GME.Close[16:449]) + pred
+observed <- as.numeric(GME$GME.Close[17:450])
+print(sqrt(mean((pred - observed)^2)))
+
+results <- data.frame(observed = observed, pred = pred, 
+                      baseline = as.numeric(GME$GME.Close[16:449]),
+                      ind = index(GME$GME.Close[17:450]))
+
+print(results[35:65,] |> pivot_longer(cols = c("observed", "pred"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+
+print(results[400:434,] |> pivot_longer(cols = c("observed", "pred"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+
+
+# Create testing baseline model
+observed <- as.numeric(GME$GME.Close[452:505])
+baseline_pred_test <- as.numeric(GME$GME.Close[451:504])
+baseline_rmse_test <- sqrt(mean((baseline_pred_test - observed)^2))
+print(baseline_rmse_test)
+
+
+test <- diff(as.matrix(test))
+for(i in 1:5){
+  test[,i] <- (test[,i] / train_sds[i]) - train_means[i]
+}
+test <- as.data.table(test)
+add_lagged(test, 14)
+test <- drop_na(test)
+
+pred <- predict(model$finalModel, as.matrix(test))
+# Remove last prediction due to lack of corresponding observation
+pred <- pred[1: length(pred) - 1]
+pred <- (pred * train_sds[1]) + train_means[1]
+pred <- as.numeric(GME$GME.Close[466:504]) + pred
+observed <- as.numeric(GME$GME.Close[467:505])
 print(sqrt(mean((pred - observed)^2)))
