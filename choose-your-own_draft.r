@@ -3,12 +3,14 @@ if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.
 if(!require(lubridate)) install.packages("lubridate", repos = "http://cran.us.r-project.org")
 if(!require(data.table)) install.packages("lubridate", repos = "http://cran.us.r-project.org")
 if(!require(quantmod)) install.packages("quantmod", repos = "http://cran.us.r-project.org")
+if(!require(glmnet)) install.packages("quantmod", repos = "http://cran.us.r-project.org")
 
 library(tidyverse)
 library(caret)
 library(lubridate)
 library(data.table)
 library(quantmod)
+library(glmnet)
 
 start <- as.Date("2021-03-08")
 end <- as.Date("2023-03-09")
@@ -17,14 +19,16 @@ end <- as.Date("2023-03-09")
 getSymbols("GME", from = start, to = end)
 
 # Drop GME.Adjusted
-print(any(GME$GME.Close != GME$GME.Adjusted))
+print(sprintf("Are GME.Adjusted and GME.Close identical?: %s",
+              all(GME$GME.Close == GME$GME.Adjusted)))
 GME$GME.Adjusted <- NULL
 
 # Visualize data
 candleChart(GME, up.col = "blue", dn.col = "red", theme = "white")
 
 # Make sure there are no missing values in data
-print(any(is.na(GME)))
+print(sprintf("Any missing values in data?: %s",any(is.na(GME))))
+print("--------------------------------------------------------")
 
 # Split data into training and holdout sets
 training <- GME[1: 450,]
@@ -34,11 +38,11 @@ test <- GME[451: nrow(GME),]
 training <- diff(as.matrix(training))
 candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
 
-# Create baseline model
+# Create baseline model for training
 observed <- as.numeric(GME$GME.Close[2:450])
 baseline_pred_train <- as.numeric(GME$GME.Close[1:449])
 baseline_rmse_train <- sqrt(mean((baseline_pred_train - observed)^2))
-print(baseline_rmse_train)
+print(sprintf("Baseline training RMSE: %f",baseline_rmse_train))
 
 # Standardize data
 train_sds <- apply(training, 2, sd)
@@ -70,38 +74,38 @@ training[, target := shift(GME.Close, 1, type = "lead")]
 training <- drop_na(training)
 
 # Drop outliers
-training_clip <- training[apply(training < 5, 1, all),]
-
+training_clip <- training[apply(abs(training) < 3, 1, all),]
 
 # Train models
 
-model <- train(select(training, -target), training[, target],
+knn_intact <- train(select(training, -target), training[, target],
                 trControl = trainControl("cv"),
                 tuneGrid = data.frame(list(k = 22)),
                 method = "knn")
 
 
-model2 <- train(select(training, -target), training[, target],
+enet_intact <- train(select(training, -target), training[, target],
                trControl = trainControl("cv"),
                method = "glmnet")
-best_alpha <- model2$bestTune[,"alpha"]
-lambda_cv <- cv.glmnet(as.matrix(select(training, -target)), training[, target], 
-                       alpha = best_alpha)
-best_lambda <- lambda_cv$lambda.min
+best_alpha_intact <- model2$bestTune[,"alpha"]
+lambda_cv_intact <- cv.glmnet(as.matrix(select(training, -target)), training[, target], 
+                    alpha = best_alpha_intact)
+best_lambda_intact <- lambda_cv_intact$lambda.min
 
-model3 <- train(select(training_clip, -target), training_clip[, target],
+
+knn_clipped <- train(select(training_clip, -target), training_clip[, target],
                 trControl = trainControl("cv"),
                 tuneGrid = data.frame(list(k = 22)),
                 method = "knn")
 
-model4 <- train(select(training_clip, -target), training_clip[, target],
+
+enet_clipped <- train(select(training_clip, -target), training_clip[, target],
                 trControl = trainControl("cv"),
                 method = "glmnet")
-best_alpha <- model4$bestTune[,"alpha"]
-lambda_cv <- cv.glmnet(as.matrix(select(training_clip, -target)), training_clip[, target], 
-                       alpha = best_alpha)
-best_lambda2 <- lambda_cv$lambda.min
-
+best_alpha_clipped <- model4$bestTune[,"alpha"]
+lambda_cv_clipped <- cv.glmnet(as.matrix(select(training_clip, -target)), training_clip[, target], 
+                       alpha = best_alpha_clipped)
+best_lambda_clipped <- lambda_cv_clipped$lambda.min
 
 get_train_pred <- function(model, lambda = NULL){
   if(is.null(lambda)){
@@ -120,41 +124,49 @@ get_train_pred <- function(model, lambda = NULL){
   results <- data.frame(observed = as.numeric(observed), pred = pred, 
                         baseline = prior_vals,
                         ind = index(observed))
+  results
 }
 
-results <- get_train_pred(model)
-print(sqrt(mean((results$pred - results$observed)^2)))
+print("--------------------")
 
-print(results[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
+knn_train_intact <- get_train_pred(knn_intact)
+rmse <- sqrt(mean((knn_train_intact$pred - knn_train_intact$observed)^2))
+print(sprintf("Intact KNN training RMSE: %f", rmse))
+
+print(knn_train_intact[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
       |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
 
 
-results <- get_train_pred(model2, lambda = best_lambda)
-print(sqrt(mean((results$pred - results$observed)^2)))
+enet_train_intact <- get_train_pred(enet_intact, lambda = best_lambda_intact)
+rmse <- sqrt(mean((enet_train_intact$pred - enet_train_intact$observed)^2))
+print(sprintf("Intact elastic net training RMSE: %f", rmse))
 
-print(results[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
+print(enet_train_intact[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
       |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
 
 
-results <- get_train_pred(model3)
-print(sqrt(mean((results$pred - results$observed)^2)))
+knn_train_clipped <- get_train_pred(knn_clipped)
+rmse <- sqrt(mean((knn_train_clipped$pred - knn_train_clipped$observed)^2))
+print(sprintf("Clipped KNN training RMSE: %f", rmse))
 
-print(results[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
+print(knn_train_clipped[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
       |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
 
 
-results <- get_train_pred(model4, lambda = best_lambda2)
-print(sqrt(mean((results$pred - results$observed)^2)))
+enet_train_clipped <- get_train_pred(enet_clipped, lambda = best_lambda_clipped)
+rmse <- sqrt(mean((enet_train_clipped$pred - enet_train_clipped$observed)^2))
+print(sprintf("Clipped elastic net training RMSE: %f", rmse))
 
-print(results[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
+print(enet_train_clipped[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
       |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
 
+print("--------------------------------------------------------")
 
-# Create testing baseline model
+# Create baseline model for testing
 observed <- as.numeric(GME$GME.Close[452:505])
 baseline_pred_test <- as.numeric(GME$GME.Close[451:504])
 baseline_rmse_test <- sqrt(mean((baseline_pred_test - observed)^2))
-print(baseline_rmse_test)
+print(sprintf("Baseline test RMSE: %f",baseline_rmse_test))
 
 
 test <- diff(as.matrix(test))
@@ -165,36 +177,58 @@ test <- as.data.table(test)
 add_lagged(test, 14)
 test <- drop_na(test)
 
-pred <- predict(model$finalModel, as.matrix(test))
-# Remove last prediction due to lack of corresponding observation
-pred <- pred[1: length(pred) - 1]
-pred <- (pred * train_sds[1]) + train_means[1]
-pred <- as.numeric(GME$GME.Close[466:504]) + pred
-observed <- as.numeric(GME$GME.Close[467:505])
-print(sqrt(mean((pred - observed)^2)))
+get_test_pred <- function(model, lambda = NULL){
+  if(is.null(lambda)){
+    pred <- predict(model$finalModel, as.matrix(test))
+    
+  }
+  else{
+    pred <- predict(model$finalModel, as.matrix(test),
+                    s = lambda)[,1]
+  }
+  # Remove last prediction due to lack of corresponding observation
+  pred <- pred[1: length(pred) - 1]
+  pred <- (pred * train_sds[1]) + train_means[1]
+  prior_vals <- as.numeric(GME$GME.Close[466:504])
+  pred <- prior_vals + pred
+  observed <- GME$GME.Close[467:505]
+  
+  results <- data.frame(observed = as.numeric(observed), pred = pred, 
+                        baseline = prior_vals,
+                        ind = index(observed))
+  results
+}
 
-pred <- predict(model2$finalModel, as.matrix(test),
-                s = best_lambda)[,1]
-# Remove last prediction due to lack of corresponding observation
-pred <- pred[1: length(pred) - 1]
-pred <- (pred * train_sds[1]) + train_means[1]
-pred <- as.numeric(GME$GME.Close[466:504]) + pred
-observed <- as.numeric(GME$GME.Close[467:505])
-print(sqrt(mean((pred - observed)^2)))
+print("--------------------")
 
-pred <- predict(model3$finalModel, as.matrix(test))
-# Remove last prediction due to lack of corresponding observation
-pred <- pred[1: length(pred) - 1]
-pred <- (pred * train_sds[1]) + train_means[1]
-pred <- as.numeric(GME$GME.Close[466:504]) + pred
-observed <- as.numeric(GME$GME.Close[467:505])
-print(sqrt(mean((pred - observed)^2)))
+knn_test_intact <- get_test_pred(knn_intact)
+rmse <- sqrt(mean((knn_test_intact$pred - knn_test_intact$observed)^2))
+print(sprintf("Intact KNN test RMSE: %f", rmse))
 
-pred <- predict(model4$finalModel, as.matrix(test),
-                s = best_lambda)[,1]
-# Remove last prediction due to lack of corresponding observation
-pred <- pred[1: length(pred) - 1]
-pred <- (pred * train_sds[1]) + train_means[1]
-pred <- as.numeric(GME$GME.Close[466:504]) + pred
-observed <- as.numeric(GME$GME.Close[467:505])
-print(sqrt(mean((pred - observed)^2)))
+print(knn_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+
+
+enet_test_intact <- get_test_pred(enet_intact, lambda = best_lambda_intact)
+rmse <- sqrt(mean((enet_test_intact$pred - enet_test_intact$observed)^2))
+print(sprintf("Intact elastic net test RMSE: %f", rmse))
+
+print(enet_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+
+
+knn_test_clipped <- get_test_pred(knn_clipped)
+rmse <- sqrt(mean((knn_test_clipped$pred - knn_test_clipped$observed)^2))
+print(sprintf("Clipped KNN test RMSE: %f", rmse))
+
+print(knn_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+
+
+enet_test_clipped <- get_test_pred(enet_clipped, lambda = best_lambda_clipped)
+rmse <- sqrt(mean((enet_test_clipped$pred - enet_test_clipped$observed)^2))
+print(sprintf("Clipped elastic net test RMSE: %f", rmse))
+
+print(enet_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+
