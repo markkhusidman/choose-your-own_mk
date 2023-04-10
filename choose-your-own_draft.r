@@ -12,10 +12,11 @@ library(data.table)
 library(quantmod)
 library(glmnet)
 
+set.seed(42, sample.kind="Rounding")
+
+# Load stock data using quantmod package
 start <- as.Date("2021-03-08")
 end <- as.Date("2023-03-09")
-
-# Get data
 getSymbols("GME", from = start, to = end)
 
 # Drop GME.Adjusted
@@ -23,18 +24,18 @@ print(sprintf("Are GME.Adjusted and GME.Close identical?: %s",
               all(GME$GME.Close == GME$GME.Adjusted)))
 GME$GME.Adjusted <- NULL
 
-# Visualize data
-candleChart(GME, up.col = "blue", dn.col = "red", theme = "white")
-
 # Make sure there are no missing values in data
 print(sprintf("Any missing values in data?: %s",any(is.na(GME))))
 print("--------------------------------------------------------")
 
-# Split data into training and holdout sets
+# Visualize the initial data witch a candle chart
+candleChart(GME, up.col = "blue", dn.col = "red", theme = "white")
+
+# Split data into training and test sets
 training <- GME[1: 450,]
 test <- GME[451: nrow(GME),]
 
-# Calculate differenced data 
+# Calculate and visualize differenced data 
 training <- diff(as.matrix(training))
 candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
 
@@ -80,7 +81,7 @@ training_clip <- training[apply(abs(training) < 3, 1, all),]
 
 knn_intact <- train(select(training, -target), training[, target],
                 trControl = trainControl("cv"),
-                tuneGrid = data.frame(list(k = 22)),
+                tuneGrid = data.frame(list(k = 1:75)),
                 method = "knn")
 
 
@@ -95,7 +96,7 @@ best_lambda_intact <- lambda_cv_intact$lambda.min
 
 knn_clipped <- train(select(training_clip, -target), training_clip[, target],
                 trControl = trainControl("cv"),
-                tuneGrid = data.frame(list(k = 22)),
+                tuneGrid = data.frame(list(k = 1:75)),
                 method = "knn")
 
 
@@ -131,30 +132,41 @@ print("--------------------")
 
 knn_train_intact <- get_train_pred(knn_intact)
 rmse <- sqrt(mean((knn_train_intact$pred - knn_train_intact$observed)^2))
+print(sprintf("Intact KNN best tune: k = %s",knn_intact$bestTune))
 print(sprintf("Intact KNN training RMSE: %f", rmse))
 
 print(knn_train_intact[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
       |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
 
+print("--------------------")
 
 enet_train_intact <- get_train_pred(enet_intact, lambda = best_lambda_intact)
 rmse <- sqrt(mean((enet_train_intact$pred - enet_train_intact$observed)^2))
+
+print(sprintf("Intact elastic net best tune: alpha = %s, lambda = %s", 
+              enet_intact$bestTune[1], enet_intact$bestTune[2]))
 print(sprintf("Intact elastic net training RMSE: %f", rmse))
 
 print(enet_train_intact[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
       |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
 
+print("--------------------")
 
 knn_train_clipped <- get_train_pred(knn_clipped)
 rmse <- sqrt(mean((knn_train_clipped$pred - knn_train_clipped$observed)^2))
+print(sprintf("Clipped KNN best tune: k = %s",knn_clipped$bestTune))
 print(sprintf("Clipped KNN training RMSE: %f", rmse))
 
 print(knn_train_clipped[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
       |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
 
+print("--------------------")
 
 enet_train_clipped <- get_train_pred(enet_clipped, lambda = best_lambda_clipped)
 rmse <- sqrt(mean((enet_train_clipped$pred - enet_train_clipped$observed)^2))
+
+print(sprintf("Clipped elastic net best tune: alpha = %s, lambda = %s", 
+              enet_clipped$bestTune[1], enet_clipped$bestTune[2]))
 print(sprintf("Clipped elastic net training RMSE: %f", rmse))
 
 print(enet_train_clipped[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))

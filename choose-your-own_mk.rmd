@@ -20,22 +20,66 @@ library(lubridate)
 library(data.table)
 library(quantmod)
 library(glmnet)
+
+set.seed(42, sample.kind="Rounding")
 ```
 
 ## Introduction
 
 For reasons that are not difficult to understand, the ability to predict stock price has always been coveted. Although much time has been spent devising techniques to assist in this pursuit, its mastery has proven to be elusive for a number of reasons. The processes underlying the price of a given stock are generally complex and dynamic over time. Movements in stock price are often subject to a significant amount of noise, especially when viewed at higher granularities. Outliers are also commonly present in price data. Finally, the quantity of data for a particular stock are often limited, and data taken from one stock are rarely applicable when modeling another. Because these inherent difficulties still pose a significant barrier to stock price prediction, further investigation into this subject is warranted. Machine learning represents a relatively new and promising approach to the modeling of stock price. This study aims to test the ability of relatively simple machine learning algorithms, used in combination with basic outlier removal, to model and predict a particular stock's price. The stock in question belongs to a video game retailer named Gamestop and trades under the symbol "GME". GME has itself been the subject of a significant amount of attention over the past 2 years due to perceived irregularities in its underlying trading patterns, making it a particularly interesting candidate for exploration. The GME data used in this study have a frequency of 1 observation per day and encompass all of the trading days from March 8th, 2021 through March 8th, 2023, of which there are 505. The data consist of 5 variables: *GME.Open* represents each day's opening price, *GME.Close* represents each day's closing price, *GME.Low* represents the lowest price of each day, *GME.High* represents the highest price of each day, and *GME.Volume* represents the number of GME shares traded on each day. In summary, the initial GME dataset used in this study contains 505 rows of 5 columns. Data modeling is performed using k-nearest-neighbors (KNN) and elastic net. Each algorithm is used with both an "intact" subset of the GME data and a "clipped" subset which had gone through outlier removal, yielding a total of 4 models to be evaluated.
 
-```{r cars}
-summary(cars)
+## Methods
+
+After setting start and end dates, GME data is loaded directly into the environment using the quantmod package. The resulting data begins at the start date and encompasses all days up to, but not including, the end date.
+
+```{r, results='hide'}
+# Load stock data using quantmod package
+start <- as.Date("2021-03-08")
+end <- as.Date("2023-03-09")
+getSymbols("GME", from = start, to = end)
+```
+
+Data with daily frequency are used because this is the highest granularity offered by quantmod. Included in the data is the *GME.Adjusted* column, which should contain the stock's closing price after it is adjusted for various corporate actions. In this case, however, the column is identical to *GME.Close* and is therefore removed. The rest of the data are also checked for missing values.
+
+```{r, results='hold'}
+# Drop GME.Adjusted
+print(sprintf("Are GME.Adjusted and GME.Close identical?: %s",
+              all(GME$GME.Close == GME$GME.Adjusted)))
+GME$GME.Adjusted <- NULL
+
+# Make sure there are no missing values in data
+print(sprintf("Any missing values in data?: %s",any(is.na(GME))))
+```
+
+This yields an initial dataset which, as previously mentioned, consists of 505 rows and 5 columns. At this point, it is helpful to visualize the data. A candle chart is a common method of visualizing stock data which has the advantage of being able to incorporate all of the present columns.
+
+```{r}
+# Visualize the initial data witch a candle chart
+candleChart(GME, up.col = "blue", dn.col = "red", theme = "white")
+```
+
+Although the individual candles are difficult to make out, the chart still provides a decent sense of how GME's price and volume changed over the associated time-frame. One thing that is immediately clear is that both price and volume are non-stationary. Data is considered non-stationary if either its mean or variance change over time. In this case both the mean and the variance of all columns in the initial dataset fluctuate over time. This poses a challenge, as non-stationary data is generally more difficult to model with machine learning than stationary data. Before this issue can be addressed, however, the data must be split into a training set and a test set.
+
+```{r}
+# Split data into training and test sets
+training <- GME[1: 450,]
+test <- GME[451: nrow(GME),]
+```
+
+Rather than splitting the data via the removal of a random sample, the initial dataset is split into two contiguous groups. This is done because the resulting test set better reflects new data points, thus leading to a better estimate of a model's generalization error.
+
+Now that the initial dataset has been split, preprocessing can begin on on the training set. First, the aforementioned issue regarding the data's non-stationary nature will be mitigated. This can be effectively done by "differencing" the data. This means that every data point is replaced by the difference between said data point and the preceding value.
+
+```{r}
+# Calculate differenced data 
+training <- diff(as.matrix(training))
+```
+
+The resulting array has one fewer row than before. Now that the data has been differenced, it is useful to again visualize it. A true candle chart of this data cannot be made as the meaning of individual candles would be ambiguous. However, the quantmod helper function used previously can still utilize the differenced data to create a chart which, like before, gives a decent impression of how the data are shaped over time.
+
+```{r}
+# Visualize differenced data 
+candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
 ```
 
 ## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
