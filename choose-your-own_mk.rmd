@@ -1,0 +1,41 @@
+---
+title: "choose-your-own_mk"
+author: "Mark Khusidman"
+date: "2023-04-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(lubridate)) install.packages("lubridate", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("lubridate", repos = "http://cran.us.r-project.org")
+if(!require(quantmod)) install.packages("quantmod", repos = "http://cran.us.r-project.org")
+if(!require(glmnet)) install.packages("quantmod", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(caret)
+library(lubridate)
+library(data.table)
+library(quantmod)
+library(glmnet)
+```
+
+## Introduction
+
+For reasons that are not difficult to understand, the ability to predict stock price has always been coveted. Although much time has been spent devising techniques to assist in this pursuit, its mastery has proven to be elusive for a number of reasons. The processes underlying the price of a given stock are generally complex and dynamic over time. Movements in stock price are often subject to a significant amount of noise, especially when viewed at higher granularities. Outliers are also commonly present in price data. Finally, the quantity of data for a particular stock are often limited, and data taken from one stock are rarely applicable when modeling another. Because these inherent difficulties still pose a significant barrier to stock price prediction, further investigation into this subject is warranted. Machine learning represents a relatively new and promising approach to the modeling of stock price. This study aims to test the ability of relatively simple machine learning algorithms, used in combination with basic outlier removal, to model and predict a particular stock's price. The stock in question belongs to a video game retailer named Gamestop and trades under the symbol "GME". GME has itself been the subject of a significant amount of attention over the past 2 years due to perceived irregularities in its underlying trading patterns, making it a particularly interesting candidate for exploration. The GME data used in this study have a frequency of 1 observation per day and encompass all of the trading days from March 8th, 2021 through March 8th, 2023, of which there are 505. The data consist of 5 variables: *GME.Open* represents each day's opening price, *GME.Close* represents each day's closing price, *GME.Low* represents the lowest price of each day, *GME.High* represents the highest price of each day, and *GME.Volume* represents the number of GME shares traded on each day. In summary, the initial GME dataset used in this study contains 505 rows of 5 columns. Data modeling is performed using k-nearest-neighbors (KNN) and elastic net. Each algorithm is used with both an "intact" subset of the GME data and a "clipped" subset which had gone through outlier removal, yielding a total of 4 models to be evaluated.
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

@@ -87,7 +87,7 @@ knn_intact <- train(select(training, -target), training[, target],
 enet_intact <- train(select(training, -target), training[, target],
                trControl = trainControl("cv"),
                method = "glmnet")
-best_alpha_intact <- model2$bestTune[,"alpha"]
+best_alpha_intact <- enet_intact$bestTune[,"alpha"]
 lambda_cv_intact <- cv.glmnet(as.matrix(select(training, -target)), training[, target], 
                     alpha = best_alpha_intact)
 best_lambda_intact <- lambda_cv_intact$lambda.min
@@ -102,7 +102,7 @@ knn_clipped <- train(select(training_clip, -target), training_clip[, target],
 enet_clipped <- train(select(training_clip, -target), training_clip[, target],
                 trControl = trainControl("cv"),
                 method = "glmnet")
-best_alpha_clipped <- model4$bestTune[,"alpha"]
+best_alpha_clipped <- enet_clipped$bestTune[,"alpha"]
 lambda_cv_clipped <- cv.glmnet(as.matrix(select(training_clip, -target)), training_clip[, target], 
                        alpha = best_alpha_clipped)
 best_lambda_clipped <- lambda_cv_clipped$lambda.min
