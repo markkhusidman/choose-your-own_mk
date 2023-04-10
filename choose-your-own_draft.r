@@ -35,30 +35,32 @@ candleChart(GME, up.col = "blue", dn.col = "red", theme = "white")
 training <- GME[1: 450,]
 test <- GME[451: nrow(GME),]
 
-# Calculate and visualize differenced data 
-training <- diff(as.matrix(training))
+# Visualize training data 
 candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
 
-# Create baseline model for training
+# Create baseline random walk model for training
 observed <- as.numeric(GME$GME.Close[2:450])
 baseline_pred_train <- as.numeric(GME$GME.Close[1:449])
 baseline_rmse_train <- sqrt(mean((baseline_pred_train - observed)^2))
 print(sprintf("Baseline training RMSE: %f",baseline_rmse_train))
 
-# Standardize data
+# Calculate and visualize differenced training data 
+training <- diff(as.matrix(training))
+candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
+
+# Standardize training data
 train_sds <- apply(training, 2, sd)
 train_means <- colMeans(training)
 for(i in 1:5){training[,i] <- (training[,i] - train_means[i]) / train_sds[i]}
-candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white", yrange = c(-6, 6))
 
-# Convert data to data.table object
+# Convert training data to data.table object
 training <- as.data.table(training)
 
-# Visualize distributions of columns
+# Visualize distribution of values in training data
 print(training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
   geom_histogram(bins = 35) + facet_wrap(vars(name)))
 
-# Add lagged columns to data
+# Add lagged columns to training data
 add_lagged <- function(dt, n){
   lag_names <- map_chr(1:n, ~ sprintf("lag%d", .))
   lag_names <- expand.grid(lag_names, names(dt))
@@ -68,16 +70,17 @@ add_lagged <- function(dt, n){
 
 add_lagged(training, 14)
 
-# Add target column
+# Add target column to training data
 training[, target := shift(GME.Close, 1, type = "lead")]
 
-# Drop missing values
+# Drop missing values from training data
 training <- drop_na(training)
 
-# Drop outliers
+# Create separate training set with clipped outliers
 training_clip <- training[apply(abs(training) < 3, 1, all),]
 
-# Train models
+
+# Train models on both intact and clipped training sets
 
 knn_intact <- train(select(training, -target), training[, target],
                 trControl = trainControl("cv"),
@@ -132,7 +135,7 @@ print("--------------------")
 
 knn_train_intact <- get_train_pred(knn_intact)
 rmse <- sqrt(mean((knn_train_intact$pred - knn_train_intact$observed)^2))
-print(sprintf("Intact KNN best tune: k = %s",knn_intact$bestTune))
+print(sprintf("Intact KNN best tune: k = %s", knn_intact$bestTune))
 print(sprintf("Intact KNN training RMSE: %f", rmse))
 
 print(knn_train_intact[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))
@@ -154,7 +157,7 @@ print("--------------------")
 
 knn_train_clipped <- get_train_pred(knn_clipped)
 rmse <- sqrt(mean((knn_train_clipped$pred - knn_train_clipped$observed)^2))
-print(sprintf("Clipped KNN best tune: k = %s",knn_clipped$bestTune))
+print(sprintf("Clipped KNN best tune: k = %s", knn_clipped$bestTune))
 print(sprintf("Clipped KNN training RMSE: %f", rmse))
 
 print(knn_train_clipped[400:434,] |> pivot_longer(cols = c("observed", "pred", "baseline"))

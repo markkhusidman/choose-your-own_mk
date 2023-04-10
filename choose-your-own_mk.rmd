@@ -26,11 +26,11 @@ set.seed(42, sample.kind="Rounding")
 
 ## Introduction
 
-For reasons that are not difficult to understand, the ability to predict stock price has always been coveted. Although much time has been spent devising techniques to assist in this pursuit, its mastery has proven to be elusive for a number of reasons. The processes underlying the price of a given stock are generally complex and dynamic over time. Movements in stock price are often subject to a significant amount of noise, especially when viewed at higher granularities. Outliers are also commonly present in price data. Finally, the quantity of data for a particular stock are often limited, and data taken from one stock are rarely applicable when modeling another. Because these inherent difficulties still pose a significant barrier to stock price prediction, further investigation into this subject is warranted. Machine learning represents a relatively new and promising approach to the modeling of stock price. This study aims to test the ability of relatively simple machine learning algorithms, used in combination with basic outlier removal, to model and predict a particular stock's price. The stock in question belongs to a video game retailer named Gamestop and trades under the symbol "GME". GME has itself been the subject of a significant amount of attention over the past 2 years due to perceived irregularities in its underlying trading patterns, making it a particularly interesting candidate for exploration. The GME data used in this study have a frequency of 1 observation per day and encompass all of the trading days from March 8th, 2021 through March 8th, 2023, of which there are 505. The data consist of 5 variables: *GME.Open* represents each day's opening price, *GME.Close* represents each day's closing price, *GME.Low* represents the lowest price of each day, *GME.High* represents the highest price of each day, and *GME.Volume* represents the number of GME shares traded on each day. In summary, the initial GME dataset used in this study contains 505 rows of 5 columns. Data modeling is performed using k-nearest-neighbors (KNN) and elastic net. Each algorithm is used with both an "intact" subset of the GME data and a "clipped" subset which had gone through outlier removal, yielding a total of 4 models to be evaluated.
+For reasons that are not difficult to understand, the ability to predict stock price has always been coveted. Although much time has been spent devising techniques to assist in this pursuit, its mastery has proven to be elusive for a number of reasons. The processes underlying the price of a given stock are generally complex and dynamic over time. Movements in stock price are often subject to a significant amount of noise, especially when viewed at higher granularities. Outliers are also commonly present in price data. Finally, the quantity of data for a particular stock are often limited, and data taken from one stock are rarely applicable when modeling another. Because these inherent difficulties still pose a significant barrier to stock price prediction, further investigation into this subject is warranted. Machine learning represents a relatively new and promising approach to the modeling of stock price. This study aims to test the ability of relatively simple machine learning algorithms, used in combination with basic outlier removal, to model and predict a particular stock's closing price. The stock in question belongs to a video game retailer named Gamestop and trades under the symbol "GME". GME has itself been the subject of a significant amount of attention over the past 2 years due to perceived irregularities in its underlying trading patterns, making it a particularly interesting candidate for exploration. The GME data used in this study have a frequency of 1 observation per day and encompass all of the trading days from March 8th, 2021 through March 8th, 2023, of which there are 505. The data consist of 5 variables: *GME.Open* represents each day's opening price, *GME.Close* represents each day's closing price, *GME.Low* represents the lowest price of each day, *GME.High* represents the highest price of each day, and *GME.Volume* represents the number of GME shares traded on each day. In summary, the initial GME dataset used in this study contains 505 rows of 5 columns. Data modeling is performed using k-nearest-neighbors (KNN) and elastic net. Each algorithm is used with both an "intact" subset of the GME data and a "clipped" subset which had gone through outlier removal, yielding a total of 4 models to be evaluated.
 
 ## Methods
 
-After setting start and end dates, GME data is loaded directly into the environment using the quantmod package. The resulting data begins at the start date and encompasses all days up to, but not including, the end date.
+After setting start and end dates, GME data is loaded directly into the environment using the "quantmod" package. The resulting data begins at the start date and encompasses all days up to, but not including, the end date.
 
 ```{r, results='hide'}
 # Load stock data using quantmod package
@@ -66,20 +66,63 @@ training <- GME[1: 450,]
 test <- GME[451: nrow(GME),]
 ```
 
-Rather than splitting the data via the removal of a random sample, the initial dataset is split into two contiguous groups. This is done because the resulting test set better reflects new data points, thus leading to a better estimate of a model's generalization error.
-
-Now that the initial dataset has been split, preprocessing can begin on on the training set. First, the aforementioned issue regarding the data's non-stationary nature will be mitigated. This can be effectively done by "differencing" the data. This means that every data point is replaced by the difference between said data point and the preceding value.
+Rather than splitting the data via the removal of a random sample, the initial dataset is split into two contiguous groups. This is done because the resulting test set better reflects new data points, thus leading to a better estimate of a model's generalization error. The training set yielded from this split is pictured below:
 
 ```{r}
-# Calculate differenced data 
+# Visualize training data 
+candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
+```
+
+Now that the initial dataset has been split, a baseline model can be defined based on the training set. This model will serve as a useful referance point when the machine learning models are first evaluated. The specific baseline model chosen in this instance is the naive model, also known as the random walk model. Predictions using this model are always equal to the input value, meaning that the predicted series looks like the input series shifted forward by one time-step. This model is particularly useful for time series with no consistent trend or apparent seasonaliy. It should be noted that although the initial price data do have an apparent trend when considered in full, the trend within smaller segments varies wildly; this prevents the use of a slope-based initial model.
+
+```{r}
+# Create baseline random walk model for training
+observed <- as.numeric(GME$GME.Close[2:450])
+baseline_pred_train <- as.numeric(GME$GME.Close[1:449])
+baseline_rmse_train <- sqrt(mean((baseline_pred_train - observed)^2))
+print(sprintf("Baseline training RMSE: %f",baseline_rmse_train))
+```
+
+As shown above, the baseline model yields an RMSE of approximately 2.751.
+
+After the baseline model is defined, preprocessing of the training set begins. First, the aforementioned issue regarding the data's non-stationary nature will be mitigated. This can be effectively done by "differencing" the data. This means that every data point is replaced by the difference between said data point and the preceding value.
+
+```{r}
+# Calculate differenced training data 
 training <- diff(as.matrix(training))
 ```
 
-The resulting array has one fewer row than before. Now that the data has been differenced, it is useful to again visualize it. A true candle chart of this data cannot be made as the meaning of individual candles would be ambiguous. However, the quantmod helper function used previously can still utilize the differenced data to create a chart which, like before, gives a decent impression of how the data are shaped over time.
+The resulting array has one fewer row than before. Now that the data have been differenced, it is useful to again visualize thme. A true candle chart of these data cannot be made as the meaning of individual candles would be ambiguous. However, the previously used "candleChart" function can still utilize the differenced data to create a chart which, like before, gives a decent impression of how the data are shaped over time.
 
 ```{r}
-# Visualize differenced data 
+# Visualize differenced training data 
 candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
 ```
+
+Although the differenced data still aren't perfectly stationary, they are far more stationary than the non-differenced data. Next, the training set is standardized. This is done by centering each column before dividing the column by its standard deviation.
+
+```{r}
+# Standardize training data
+train_sds <- apply(training, 2, sd)
+train_means <- colMeans(training)
+for(i in 1:5){training[,i] <- (training[,i] - train_means[i]) / train_sds[i]}
+```
+
+The training set is subsequently converted into a "data.table" object to ease further preprocessing.
+
+```{r}
+# Convert training data to data.table object
+training <- as.data.table(training)
+```
+
+Before continuing, it is useful to visualize the distribution of values found in the training set. This can be accomplished through the use of histograms.
+
+```{r}
+# Visualize distribution of values in training data
+print(training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
+  geom_histogram(bins = 35) + facet_wrap(vars(name)))
+```
+
+All of the columns have roughly normal distributions, although there is a clear right skew in columns which are price-related. It would also appear as though all columns contain outliers on both sides of their median value.
 
 ## Including Plots
