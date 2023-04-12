@@ -62,9 +62,11 @@ print(training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
 
 # Add lagged columns to training data
 add_lagged <- function(dt, n){
+  # Define new column names
   lag_names <- map_chr(1:n, ~ sprintf("lag%d", .))
   lag_names <- expand.grid(lag_names, names(dt))
   lag_names <- apply(lag_names, 1, function(v){paste(v[2], v[1], sep = "_")})
+  # Create lagged columns
   dt[, (lag_names) := shift(.SD, 1:n, type = "lag"), .SDcols = names(dt)]
 }
 
@@ -73,11 +75,15 @@ add_lagged(training, 14)
 # Add target column to training data
 training[, target := shift(GME.Close, 1, type = "lead")]
 
-# Drop missing values from training data
+# Drop rows with missing values from training data
 training <- drop_na(training)
 
 # Create separate training set with clipped outliers
-training_clip <- training[apply(abs(training) < 3, 1, all),]
+training_clip <- training[apply(abs(training) <= 3, 1, all),]
+
+# Visualize distribution of values in clipped training data
+print(training_clip[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
+        geom_histogram(bins = 35) + facet_wrap(vars(name)))
 
 
 # Train models on both intact and clipped training sets

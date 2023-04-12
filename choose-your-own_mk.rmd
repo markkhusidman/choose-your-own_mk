@@ -26,7 +26,7 @@ set.seed(42, sample.kind="Rounding")
 
 ## Introduction
 
-For reasons that are not difficult to understand, the ability to predict stock price has always been coveted. Although much time has been spent devising techniques to assist in this pursuit, its mastery has proven to be elusive for a number of reasons. The processes underlying the price of a given stock are generally complex and dynamic over time. Movements in stock price are often subject to a significant amount of noise, especially when viewed at higher granularities. Outliers are also commonly present in price data. Finally, the quantity of data for a particular stock are often limited, and data taken from one stock are rarely applicable when modeling another. Because these inherent difficulties still pose a significant barrier to stock price prediction, further investigation into this subject is warranted. Machine learning represents a relatively new and promising approach to the modeling of stock price. This study aims to test the ability of relatively simple machine learning algorithms, used in combination with basic outlier removal, to model and predict a particular stock's closing price. The stock in question belongs to a video game retailer named Gamestop and trades under the symbol "GME". GME has itself been the subject of a significant amount of attention over the past 2 years due to perceived irregularities in its underlying trading patterns, making it a particularly interesting candidate for exploration. The GME data used in this study have a frequency of 1 observation per day and encompass all of the trading days from March 8th, 2021 through March 8th, 2023, of which there are 505. The data consist of 5 variables: *GME.Open* represents each day's opening price, *GME.Close* represents each day's closing price, *GME.Low* represents the lowest price of each day, *GME.High* represents the highest price of each day, and *GME.Volume* represents the number of GME shares traded on each day. In summary, the initial GME dataset used in this study contains 505 rows of 5 columns. Data modeling is performed using k-nearest-neighbors (KNN) and elastic net. Each algorithm is used with both an "intact" subset of the GME data and a "clipped" subset which had gone through outlier removal, yielding a total of 4 models to be evaluated.
+For reasons that are not difficult to understand, the ability to predict stock price has always been coveted. Although much time has been spent devising techniques to assist in this pursuit, its mastery has proven to be elusive for a number of reasons. The processes underlying the price of a given stock are generally complex and dynamic over time. Movements in stock price are often subject to a significant amount of noise, especially when viewed at higher granularities. Outliers are also commonly present in price data. Finally, the quantity of data for a particular stock are often limited, and data taken from one stock are rarely applicable when modeling another. Because these inherent difficulties still pose a significant barrier to stock price prediction, further investigation into this subject is warranted. Machine learning represents a relatively new and promising approach to the modeling of stock price. This study aims to test the ability of relatively simple machine learning algorithms, used in combination with basic outlier removal, to model and predict a particular stock's closing price. The stock in question belongs to a video game retailer named Gamestop and trades under the symbol "GME". GME has itself been the subject of a significant amount of attention over the past 2 years due to perceived irregularities in its underlying trading patterns, making it a particularly interesting candidate for exploration. The GME data used in this study have a frequency of 1 observation per day and encompass all of the trading days from March 8th, 2021 through March 8th, 2023, of which there are 505. The data consist of 5 variables: *GME.Open* represents each day's opening price, *GME.Close* represents each day's closing price, *GME.Low* represents the lowest price of each day, *GME.High* represents the highest price of each day, and *GME.Volume* represents the number of GME shares traded on each day. In summary, the initial GME dataset used in this study contains 505 rows of 5 columns. Data modeling is performed using k-nearest-neighbors (k-NN) and elastic net. Each algorithm is used with both an "intact" subset of the GME data and a "clipped" subset which had gone through outlier removal, yielding a total of 4 models to be evaluated.
 
 ## Methods
 
@@ -43,12 +43,12 @@ Data with daily frequency are used because this is the highest granularity offer
 
 ```{r, results='hold'}
 # Drop GME.Adjusted
-print(sprintf("Are GME.Adjusted and GME.Close identical?: %s",
-              all(GME$GME.Close == GME$GME.Adjusted)))
+sprintf("Are GME.Adjusted and GME.Close identical?: %s",
+              all(GME$GME.Close == GME$GME.Adjusted))
 GME$GME.Adjusted <- NULL
 
 # Make sure there are no missing values in data
-print(sprintf("Any missing values in data?: %s",any(is.na(GME))))
+sprintf("Any missing values in data?: %s",any(is.na(GME)))
 ```
 
 This yields an initial dataset which, as previously mentioned, consists of 505 rows and 5 columns. At this point, it is helpful to visualize the data. A candle chart is a common method of visualizing stock data which has the advantage of being able to incorporate all of the present columns.
@@ -80,7 +80,7 @@ Now that the initial dataset has been split, a baseline model can be defined bas
 observed <- as.numeric(GME$GME.Close[2:450])
 baseline_pred_train <- as.numeric(GME$GME.Close[1:449])
 baseline_rmse_train <- sqrt(mean((baseline_pred_train - observed)^2))
-print(sprintf("Baseline training RMSE: %f",baseline_rmse_train))
+sprintf("Baseline training RMSE: %f",baseline_rmse_train)
 ```
 
 As shown above, the baseline model yields an RMSE of approximately 2.751.
@@ -119,10 +119,59 @@ Before continuing, it is useful to visualize the distribution of values found in
 
 ```{r}
 # Visualize distribution of values in training data
-print(training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
-  geom_histogram(bins = 35) + facet_wrap(vars(name)))
+training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
+  geom_histogram(bins = 35) + facet_wrap(vars(name))
 ```
 
-All of the columns have roughly normal distributions, although there is a clear right skew in columns which are price-related. It would also appear as though all columns contain outliers on both sides of their median value.
+All of the columns have roughly normal distributions, although the volume column's peak appears significantly sharper than would be expected for normally distributed data. There also seems to be a right skew in columns which are price-related, although this is less prominent in *GME.Low*. Finally, it can be noted that all columns appear to contain outliers.
+
+Next, 14 lagged columns are created in the training dataset for each of the 5 columns currently present. This means that every row now contains 15 days worth of opening price, closing price, daily high, daily low, and trading volume data.
+
+```{r}
+# Add lagged columns to training data
+add_lagged <- function(dt, n){
+  # Define new column names
+  lag_names <- map_chr(1:n, ~ sprintf("lag%d", .))
+  lag_names <- expand.grid(lag_names, names(dt))
+  lag_names <- apply(lag_names, 1, function(v){paste(v[2], v[1], sep = "_")})
+  # Create lagged columns
+  dt[, (lag_names) := shift(.SD, 1:n, type = "lag"), .SDcols = names(dt)]
+}
+
+add_lagged(training, 14)
+```
+
+Once the above code is run, the training dataset contains 75 columns in total. Before model training can commence, however, one more column must be defined. The *target* column contains the correct output value associated with each row. This row will be separated from the inputs before they are fed into the model. In this case, the target value is the closing price recorded one day after the final date associated with the input values.
+
+```{r}
+# Add target column to training data
+training[, target := shift(GME.Close, 1, type = "lead")]
+```
+
+It should be noted that the process of adding lagged columns results in 14 rows with at least one empty value, while the addition of the target column adds one such row. These rows must now be removed.
+
+```{r}
+# Drop rows with missing values from training data
+training <- drop_na(training)
+```
+
+At this point, a separate training dataset is created by subjecting the current training data to an outlier removal process. Specifically, rows containing values which are more than 3 standard deviations from their respective mean are removed. Because the training data are already scaled, this is easily done.
+
+```{r}
+# Create separate training set with clipped outliers
+training_clip <- training[apply(abs(training) <= 3, 1, all),]
+```
+
+Note that the rows now include the target value as well as input values. From this point forward, the training dataset subjected to outlier removal and its associated models will be referred to as "clipped", while the dataset containing outliers and its associated models will be referred to as "intact". The intact training set currently contains 434 rows, while the clipped training set contains 317. Some insight can be gained into the result of the outlier removal process by visualizing the clipped dataset's value distributions.
+
+```{r}
+# Visualize distribution of values in clipped training data
+training_clip[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
+        geom_histogram(bins = 35) + facet_wrap(vars(name))
+```
+
+Based on the above histograms, it would appear as though the outlier removal process was successful to a fair extent. The new visualization also reveals a left skew in the volume column which was previously obscured due to binning.
+
+Now that the clipped training set has been created, model tuning can begin. As mentioned previously, both the k-NN and elastic net models will be utilized for this purpose. The k-NN algorithm involves first selecting a predefined number of input vectors which are most similar to the input being used for prediction. For continuous data, similarity is generally defined as the euclidean distance between two vectors. The number of similar inputs used for prediction is referred to as *k*. One the most similar inputs are identified, predictions are made by averaging the target values associated with said similar inputs. Because the model makes no underlying assumptions about the relationship between inputs and outputs (apart from the idea that similar inputs will yield similar outputs), it can prove useful in modeling data where this relationship is complex. As the relationship between inputs and outputs is not readily apparent in the GME data, this quality may be useful. Implementing the elastic net model means fitting a regularized linear model to the data. The penalty applied to the parameters is calcualted via a mixture of L1 and L2 normalization. As such, the elastic net model is often thought of as a mixture between Ridge regression and Lasso regression. The extent to which one form of regularization dominates over the other is controlled by the hyperparameter *alpha*. A value close to 0 gives more weight to the L2 penalty, while a value close to 1 give more weight to the L1 penalty. The final penalty value is scaled with the *lambda* hyperparameter, which thereby controls the extent of regularization. Regularized linear models are particularly useful when there is a high degree of colinearity among the input columns. This is because unregularized linear models are prone to overfitting when trained on such data. Because there is fairly high degree of colinearity between input columns which are associated with the same time-step, this may be a useful quality. Although the elastic net model ultimately entails fitting a linear model to the data, the inherent generalization involved in such a simplification may offer its own protection against overfitting.
 
 ## Including Plots
