@@ -174,7 +174,7 @@ training_clip[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
 
 Based on the above histograms, it would appear as though the outlier removal process was successful to a fair extent. The new visualization also reveals a left skew in the volume column which was previously obscured due to binning.
 
-Now that the clipped training set has been created, model tuning can soon begin. As mentioned previously, both the k-NN and elastic net models will be utilized for this purpose. The k-NN algorithm involves first selecting a predefined number of "neighboring" input vectors which are most similar to the input being used for prediction. For continuous data, similarity is generally defined as the euclidean distance between two vectors. The number of similar inputs used for prediction is referred to as *k*. One the most similar inputs are identified, predictions are made by averaging the target values associated with said similar inputs. Because the model makes no underlying assumptions about the relationship between inputs and outputs (apart from the idea that similar inputs will yield similar outputs), it can prove useful in modeling data where this relationship is complex. As the relationship between inputs and outputs is not readily apparent in the GME data, this quality may be useful. Implementing the elastic net model means fitting a regularized linear model to the data. The penalty applied to the parameters is calcualted via a mixture of L1 and L2 normalization. As such, the elastic net model is often thought of as a mixture between Ridge regression and Lasso regression. The extent to which one form of regularization dominates over the other is controlled by the hyperparameter *alpha*. A value close to 0 gives more weight to the L2 penalty, while a value close to 1 give more weight to the L1 penalty. The final penalty value is scaled with the *lambda* hyperparameter, which thereby controls the extent of regularization. Regularized linear models are particularly useful when there is a high degree of colinearity among the input columns. This is because unregularized linear models are prone to undersmoothing when trained on such data. Because there is fairly high degree of colinearity between input columns which are associated with the same time-step, this may be a useful quality. Although the elastic net model ultimately entails fitting a linear model to the data, the inherent generalization involved in such a simplification may offer its own protection against undersmoothing.
+Now that the clipped training set has been created, model tuning can soon begin. As mentioned previously, both the k-NN and elastic net models will be utilized for this purpose. The k-NN algorithm involves first selecting a predefined number of "neighboring" input vectors which are most similar to the input being used for prediction. For continuous data, similarity is generally defined as the euclidean distance between two vectors. The number of similar inputs used for prediction is referred to as *k*. One the most similar inputs are identified, predictions are made by averaging the target values associated with said similar inputs. Because the model makes no underlying assumptions about the relationship between inputs and outputs (apart from the idea that similar inputs will yield similar outputs), it can prove useful in modeling data where this relationship is complex. As the relationship between inputs and outputs is not readily apparent in the GME data, this quality may be useful. Implementing the elastic net model means fitting a regularized linear model to the data. The penalty applied to the parameters is calcualted via a mixture of L1 and L2 normalization. As such, the elastic net model is often thought of as a mixture between Ridge regression and Lasso regression. The extent to which one form of regularization dominates over the other is controlled by the hyperparameter *alpha*. A value close to 0 gives more weight to the L2 penalty, while a value close to 1 give more weight to the L1 penalty. The final penalty value is scaled with the *lambda* hyperparameter, which thereby controls the extent of regularization. Regularized linear models are particularly useful when there is a high degree of colinearity among the input columns. This is because unregularized linear models are prone to overfitting when trained on such data. Because there is fairly high degree of colinearity between input columns which are associated with the same time-step, this may be a useful quality. Although the elastic net model ultimately entails fitting a linear model to the data, the inherent generalization involved in such a simplification may offer its own protection against overfitting.
 
 One final step to be undertaken before model tuning begins is the creation of a function which turns raw model outputs into closing price predictions. Recall that since the models are being trained on differenced data, their predictions correspond to changes in closing price, rather than the price itself. To create final predictions, each model output must be added to the observed closing value occurring directly before the predicted time-step. Because of the single row lost when differencing the data, the 14 rows lost when creating lagged columns, and the single row lost when adding a target column, the first 16 values of input data are not used as observations when evaluating models.
 
@@ -209,7 +209,9 @@ get_train_pred <- function(model, lambda = NULL){
 
 The above function yields a data.frame object containing closing price predictions, the observed values corresponding to those predictions, the predictions yielded from the previously defined baseline model, and an index used for visualization purposes. It should be noted that for all models, including clipped ones, evaluation is done using the intact training set. This is done to give the best possible sense of their future testing performance.
 
-Now that the aforementioned function has been defined, model tuning can finally commence. For all 4 models discussed in this study, tuning is conducted via K-fold cross-validation where the number of folds is 10. Like the test data, all 10 validation sets used during the process are contiguous. This makes K-fold cross-validation more representative of this study's final testing conditions than techniques like bootstrapping or Monte-Carlo cross-validation. The intact k-NN model is the first to be tuned.
+Now that the aforementioned function has been defined, model tuning can finally commence. For all 4 models discussed in this study, tuning is conducted via K-fold cross-validation where the number of folds is equal to 10. Like the test data, all 10 validation sets used during the process are contiguous. This makes K-fold cross-validation more representative of this study's final testing conditions than techniques like bootstrapping or Monte-Carlo cross-validation. Time series cross-validation, a technique in which only the data points occurring prior to those in the validation set are used for for training, would have been the technique most representative of final testing conditions. However, the fact that this process disregards a portion of the training data during all but its final iteration, when coupled with the small quantity of training data available, makes this technique undesirable. In addition, the models explored in this study assume that the relationship between their input and output is static over time, a case in which time series cross-validation is of dubious benefit.
+
+The intact k-NN model is the first to be tuned.
 
 ```{r}
 # Tune intact k-NN model
@@ -224,7 +226,8 @@ The greatest value of *k* investigated during tuning is 200. A limit must be imp
 
 ```{r}
 # Confirm best value of k for intact k-NN
-print(knn_intact$results |> ggplot(aes(k, RMSE)) + geom_line() + geom_point())
+print(knn_intact$results |> 
+        ggplot(aes(k, RMSE)) + geom_line() + geom_point(size=1))
 ```
 
 The above chart seems to confirm that 128 is a reasonable value for *k*.
@@ -244,7 +247,7 @@ As shown above, the RMSE of the intact k-NN is approximately 2.954 when evaluate
 # Visualize training set predictions yielded by intact k-NN model
 print(knn_train_intact[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2))
 ```
 
 Based on the above visualization, it is apparent that the predicted values yielded by this model more closely follow the baseline predictions than the observations. However, there are multiple points where the intact k-NN predictions and the baseline predictions significantly differ. The similarity in training RMSE between the baseline model and the intact k-NN model appears to be supported by this visualization.
@@ -258,18 +261,14 @@ knn_clipped <- train(select(training_clip, -target), training_clip[, target],
                      tuneGrid = data.frame(list(k = 1:200)),
                      method = "knn")
 sprintf("Clipped k-NN best tune: k = %s", knn_clipped$bestTune)
-
-# Evaluate best clipped k-NN model on intact training set
-knn_train_clipped <- get_train_pred(knn_clipped$finalModel)
-rmse <- sqrt(mean((knn_train_clipped$pred - knn_train_clipped$observed)^2))
-sprintf("Clipped k-NN training RMSE: %f", rmse)
 ```
 
 In this case, the best value for *k* is found to be 180, a fairly significant departure from the 128 neighbors used in the intact k-NN model. As with the previous k-NN model, the relationship between the value of *k* and its associated RMSE is visualized.
 
 ```{r}
 # Confirm best value of k for clipped k-NN
-print(knn_clipped$results |> ggplot(aes(k, RMSE)) + geom_line() + geom_point())
+print(knn_clipped$results |> 
+        ggplot(aes(k, RMSE)) + geom_line() + geom_point(size=1))
 ```
 
 In this case, it does indeed seem as though 180 is the optimal value of *k* out of those investigated. The clipped k-NN model is now given an initial evaluation. As mentioned previously, both clipped and intact models are evaluated on the intact training set.
@@ -287,12 +286,12 @@ Although the clipped k-NN's training RMSE of approximately 2.970 is still margin
 # Visualize training set predictions yielded by clipped k-NN model
 knn_train_clipped[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point()
+        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
 ```
 
 The predictions made by the clipped k-NN model follow the baseline predictions more closely than the intact k-NN model. However, some clipped k-NN predictions are still noticeably different from their associated baseline predictions. Based on the above visualization, it is easy to see why the training RMSE of the clipped k-NN model is so similar to that of the baseline model.
 
-The intact elastic net model is the third to be tuned. It should be noted that the *alpha* and *lambda* hyperparameters are tuned separately: First, the value for *alpha* is found using the "caret" package. Next, the "glmnet" package is used directly to find the value of *lambda* while the value of *alpha* remains fixed. This is done because glmnet's default tuning implementation finds the optimal *lambda* by testing against an extensive, non-linear sequence of values. Although it would have been possible to reconstruct this sequence and use it with caret's "train" function, this would likely have been time-consuming.
+The intact elastic net model is the third to be tuned. It should be noted that the *alpha* and *lambda* hyperparameters are tuned separately: First, the value for *alpha* is found using the "caret" package. Next, the "glmnet" package is used directly to find the value of *lambda* while the value of *alpha* remains fixed. This is done because glmnet's default tuning implementation finds the optimal *lambda* by testing against an extensive, non-linear sequence of values. Although it would have been possible to reconstruct this sequence and use it with caret's "train" function, this would likely have been time-consuming. As in previous cases, the *lambda* hyperparameter is tuned using K-fold cross-validation where the number of folds is equal to 10.
 
 ```{r}
 # Tune intact elastic net model
@@ -302,7 +301,8 @@ enet_intact <- train(select(training, -target), training[, target],
 best_alpha_intact <- enet_intact$bestTune[,"alpha"]
 
 # Use in-depth search to find best lambda for intact elastic net
-lambda_cv_intact <- cv.glmnet(as.matrix(select(training, -target)), training[, target], alpha = best_alpha_intact)
+lambda_cv_intact <- cv.glmnet(as.matrix(select(training, -target)), 
+                              training[, target], alpha = best_alpha_intact)
 
 best_lambda_intact <- lambda_cv_intact$lambda.min
 
@@ -326,7 +326,7 @@ The training RMSE yielded by the intact elastic net model is found to be identic
 # Visualize training set predictions yielded by intact elastic net model
 print(enet_train_intact[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2))
 ```
 
 The above chart demonstrates that the intact elastic net model's predictions appear identical to their associated baseline model predictions. This must mean that all raw outputs yielded by the model, which represent changes in closing price rather than the price itself, are close to zero. This would make the intact elastic net model functionally similar to the baseline model, thereby yielding a similar or identical RMSE when evaluated.
@@ -341,7 +341,8 @@ enet_clipped <- train(select(training_clip, -target), training_clip[, target],
 best_alpha_clipped <- enet_clipped$bestTune[,"alpha"]
 
 # Use in-depth search to find best lambda for clipped elastic net
-lambda_cv_clipped <- cv.glmnet(as.matrix(select(training_clip, -target)), training_clip[, target], alpha = best_alpha_clipped)
+lambda_cv_clipped <- cv.glmnet(as.matrix(select(training_clip, -target)),
+                               training_clip[, target], alpha = best_alpha_clipped)
 
 best_lambda_clipped <- lambda_cv_clipped$lambda.min
 
@@ -359,13 +360,13 @@ rmse <- sqrt(mean((enet_train_clipped$pred - enet_train_clipped$observed)^2))
 sprintf("Clipped elastic net training RMSE: %f", rmse)
 ```
 
-The yielded training RMSE of approximately 2.974312 is the worst one out the 4 collected, albeit by a very small margin. It is the only training RMSE found to be greater than the baseline training RMSE. As with the k-NN models, this study's outlier removal process appears to cause an increase in the training RMSE of elastic net models. The clipped elastic net model's training data predictions are now visualized as was done for the other models.
+The yielded training RMSE of approximately 2.974312 is the worst one out of the 4 collected, albeit by a very small margin. It is the only training RMSE found to be greater than the baseline training RMSE. As with the k-NN models, this study's outlier removal process appears to cause an increase in the training RMSE of elastic net models. The clipped elastic net model's training data predictions are now visualized as was done for the other models.
 
 ```{r}
 # Visualize training set predictions yielded by clipped elastic net model
 enet_train_clipped[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point()
+        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
 ```
 
 Although the clipped elastic net predictions follow their associated baseline predictions almost perfectly, slight differences can be detected at all points. Unlike what was seen with the k-NN models, predictions yielded by the clipped elastic net model are less similar to the baseline predictions than are the intact elastic net predictions. Now that that evaluation and visualization of all 4 models' performance on the training data has been completed, the models will soon be evaluated on the the test set. Although only the k-NN models outperformed the baseline model when evaluated on the intact training set, all will be investigated further for informative purposes. Before this can be done, however, the test data must be preprocessed in the same manner as the intact training data.
@@ -434,7 +435,7 @@ The yielded RMSE of approximately 1.138 is worse than the baseline testing RMSE.
 ```{r}
 # Visualize intact k-NN model on testing data
 knn_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-  ggplot(aes(ind, value, color = name)) + geom_line() + geom_point()
+  ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
 ```
 
 As seen in the intact k-NN model's initial evaluation, model predictions follow baseline predictions more than observed values, although noticable differences between model predictions and baseline predictions still exist. It appears as though their is less of a difference between the intact k-NN model's predictions and baseline predictions than what was seen in the initial evaluation.
@@ -452,7 +453,8 @@ As in the previous case, the yielded RMSE of around 1.1267 is worse than the bas
 
 ```{r}
 # Visualize clipped k-NN model on testing data
-knn_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline")) |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point()
+knn_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline")) |>
+  ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
 ```
 
 As was noted during initial evaluations, the clipped k-NN model's predictions follow the baseline prediction more closely than predictions from the intact k-NN model. Like the intact k-NN model, the clipped version seems to follow the baseline model more closely during testing than it did during initial evaluations.
@@ -471,7 +473,8 @@ The yielded RMSE of 1.118236 is marginally better than the baseline testing RMSE
 
 ```{r}
 # Visualize intact elastic net model on testing data
-enet_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline")) |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point()
+enet_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline")) |>
+  ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
 ```
 
 As was seen during initial evaluations, the intact elastic net model's predictions appear indistinguishable baseline predictions, suggesting that the model's raw outputs are close to zero. Although the slight discrepancy between the intact elastic net model's RMSE and the baseline testing RMSE indicates that the two sets of predictions are not completely identical, this cannot be visually confirmed.
@@ -490,11 +493,14 @@ The yielded RMSE of approximately 1.120 is larger than the baseline testing RMSE
 
 ```{r}
 # Visualize clipped elastic net model on testing data
-enet_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline")) |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point()
+enet_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline")) |>
+  ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
 ```
 
 As was noted during initial evaluations, the clipped elastic net model's predictions follow the baseline predictions extremely closely, but not perfectly. Also like what was seen earlier, the clipped elastic net model's predictions differ more from the baseline predictions than do the intact elastic net model's predictions, again running counter to what is observed when the k-NN models are compared.
 
 ## Conclusion
 
-Before the final performance of the ML models is discussed, there are are a few observations regarding their behavior worth mentioning. It would appear as though none of the 4 models explored in this study are capable of significantly outperforming the baseline random walk model when evaluated on the test data. Although the intact elastic net model testing RMSE is technically smaller than the baseline testing RMSE, the difference between them is likely insignificant. The potential effectiveness of all models is likely reduced due to the large difference in variance between the training data and the test data. The non-stationary relationship between variance and time within the training data likely interferes with successful modeling as well. Another factor contributing to successful modeling is the high degree of noise present in the differenced training data. This is a known drawback of making the data more stationary via differencing. Another clear limitation of the present study was the relatively small quantity of data used. This may be addressed in the future when more data is available. Finding GME data with a higher frequency could also potentially mitigate this issue. It should also be noted that the outlier removal method used in this study is very basic. The use of a more advanced outlier removal method such as LOF may serve to improve results in future research. Another limitation in this study is that only 2 types of machine learning models were explored. Future research should consider a wider array of model types.
+Before the final performance of the ML models is discussed, there are are a few observations regarding their behavior worth mentioning. First, all 4 models appear to be severely underfitted. This is most prominent when considering the intact elastic net model, where all raw outputs are extremely close to zero. Although visualizations where final predictions of closing price closely follow baseline predictions may appear to be instances of overfitting, it is important to remember that the raw model outputs used to calculate final predictions correspond to changes in closing price, rather than the closing price itself. Although it was thought that colinearity among model inputs would make the models prone to overfitting, this appeared to be outweighed by the complex relationship between model inputs and their associated target values. Another observation worth noting is the effect of outlier removal on k-NN model performance. During initial evaluations, it appeared as though outlier removal hindered model performance. During testing, however, a small improvement in RMSE was seen when comparing the clipped k-NN model to the intact version. This is likely because the the clipped training set is more representative of the relatively low-variance test set than is the intact training set. The fact that clipped k-NN predictions appear to follow baseline predictions more closely than do intact k-NN predictions suggests that, in this case, outlier removal serves as a regularizing force on k-NN models. It is interesting to note that this relationship does not seem to be present in the case of elastic net models. The intact elastic net model makes predictions which are more in accordance with baseline predictions than those made by the clipped elastic net model. This is likely because of the elastic net model's linear nature; The greater presence of both positive and negative outliers in the intact training set forces the model to shrink its predictions toward zero.
+
+Ragarding the final performance of the ML models, it would appear as though none of the 4 models explored in this study are capable of significantly outperforming the baseline random walk model when evaluated on the test data. Although the intact elastic net model testing RMSE is technically smaller than the baseline testing RMSE, the difference between them is likely insignificant. The potential effectiveness of all models is likely reduced due to the large difference in variance between the training data and the test data. The non-stationary relationship between variance and time within the training data likely interferes with successful modeling as well. Another factor contributing to successful modeling is the high degree of noise present in the differenced training data. This is a known drawback of making the data more stationary via differencing. Another clear limitation of the present study was the relatively small quantity of data used. This may be addressed in the future when more data is available. Finding GME data with a higher frequency could also potentially mitigate this issue. It should also be noted that the outlier removal method used in this study is very basic. The use of a more advanced outlier removal method such as LOF may serve to improve results in future research. Another limitation in this study is that only 2 types of machine learning models were explored. Future research should consider a wider array of model types.
