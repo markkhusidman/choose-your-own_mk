@@ -35,7 +35,7 @@ For reasons that are not difficult to understand, the ability to predict stock p
 After setting start and end dates, GME data is loaded directly into the environment using the "quantmod" package. The resulting data begins at the start date and encompasses all days up to, but not including, the end date.
 
 ```{r, results='hide'}
-# Load stock data using quantmod package
+# Load GME data using quantmod package
 start <- as.Date("2021-01-12")
 end <- as.Date("2023-05-07")
 getSymbols("GME", from = start, to = end)
@@ -57,7 +57,8 @@ This yields an initial dataset which, as previously mentioned, consists of 505 r
 
 ```{r}
 # Visualize the initial data witch a candle chart
-candleChart(GME, up.col = "blue", dn.col = "red", theme = "white")
+candleChart(GME, up.col = "blue", dn.col = "red", theme = "white", 
+            name = "Initial GME Data")
 ```
 
 Although the individual candles are difficult to make out, the chart still provides a decent sense of how GME's price and volume changed over the associated time-frame. One thing that is immediately clear is that both price and volume are non-stationary. Data is considered non-stationary if either its mean or variance change over time. In this case, both the mean and the variance of all columns in the initial dataset fluctuate over time. This poses a challenge, as non-stationary data is generally more difficult to model with machine learning algorithms than stationary data. Before this issue can be addressed, however, the data must be split into a training set and a test set.
@@ -71,8 +72,9 @@ test <- GME[451: nrow(GME),]
 Rather than splitting the data via the removal of a random sample, the initial dataset is split into two contiguous groups. A contiguous set of test data is better than a random sample at approximating the characteristics of future input data, thus leading to a better estimate of a model's generalization error. The training set yielded from this split is pictured below:
 
 ```{r}
-# Visualize training data 
-candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
+# Visualize training data with a candle chart
+candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white", 
+            name = "Raw Training Data")
 ```
 
 Now that the initial dataset has been split, a baseline model can be defined based on the training set. This model will serve as a useful reference point when first evaluating the k-NN and EN models. The specific baseline model chosen in this instance is the naive model, also known as the random walk model. Predictions using this model are always equal to the previously observed value, meaning that the predicted series looks like the observed series shifted forward by one time-step. This model is particularly useful for time series with no consistent trend or apparent seasonality. It should be noted that the first 16 values of the training data are not used as observations when evaluating the baseline model. For reasons that will later be made clear, this allows for a better comparison to future evaluations of machine learning models.
@@ -97,8 +99,9 @@ training <- diff(as.matrix(training))
 The resulting array has one fewer row than before. Now that the data have been differenced, it is useful to again visualize them. A true candle chart of these data cannot be made because the meaning of individual candles would be ambiguous. However, the previously used "candleChart" function can still utilize the differenced data to create a chart which, like before, gives a decent impression of how the data are shaped over time.
 
 ```{r}
-# Visualize differenced training data 
-candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
+# Calculate and visualize differenced training data
+candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white", 
+            name = "Differenced Training Data")
 ```
 
 Although the differenced data still aren't perfectly stationary, they are far more stationary than the non-differenced data. Next, the training set is standardized. This is done by centering each column before dividing the column by its standard deviation.
@@ -121,8 +124,9 @@ Before continuing, it is useful to visualize the distribution of values found in
 
 ```{r}
 # Visualize distribution of values in training data
-training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
-  geom_histogram(bins = 35) + facet_wrap(vars(name))
+print(training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
+  geom_histogram(bins = 35) + facet_wrap(vars(name)) + 
+    ggtitle("Histograms of Training Data"))
 ```
 
 All of the columns have roughly normal distributions, although the volume column's peak appears significantly sharper than would be expected for normally distributed data. There also seems to be a right skew in columns which are price-related, although this is less prominent in *GME.Low*. Finally, it can be noted that all columns appear to contain outliers.
@@ -168,8 +172,9 @@ Note that this operation also removes rows with a target value outside the speci
 
 ```{r}
 # Visualize distribution of values in clipped training data
-training_clip[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
-        geom_histogram(bins = 35) + facet_wrap(vars(name))
+print(training_clip[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
+        geom_histogram(bins = 35) + facet_wrap(vars(name)) + 
+        ggtitle("Histograms of Clipped Training Data"))
 ```
 
 Based on the above histograms, it would appear as though the outlier removal process was successful to a fair extent. The new visualization also reveals a left skew in the volume column which was previously obscured due to binning.
@@ -226,8 +231,9 @@ The greatest value of *k* investigated during tuning is 200. A limit must be imp
 
 ```{r}
 # Confirm best value of k for intact k-NN
-print(knn_intact$results |> 
-        ggplot(aes(k, RMSE)) + geom_line() + geom_point(size=1))
+print(knn_intact$results |> ggplot(aes(k, RMSE)) + geom_line() + 
+        geom_point(size=1) + 
+        ggtitle("Intact k-NN Tuning Results"))
 ```
 
 The above chart seems to confirm that 128 is a reasonable value for *k*.
@@ -247,7 +253,10 @@ As shown above, the RMSE of the intact k-NN is approximately 2.954 when evaluate
 # Visualize training set predictions yielded by intact k-NN model
 print(knn_train_intact[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2))
+        ggplot(aes(ind, value, color = name)) + geom_line() + 
+        geom_point(size=1.2) + 
+        labs(title="Intact k-NN Training Evaluation", x="date", 
+             y="closing price ($)"))
 ```
 
 Based on the above visualization, it is apparent that the predicted values yielded by this model more closely follow the baseline predictions than the observations. However, there are multiple points where the intact k-NN predictions and the baseline predictions significantly differ. The similarity in training RMSE between the baseline model and the intact k-NN model appears to be supported by this visualization.
@@ -267,8 +276,9 @@ In this case, the best value for *k* is found to be 180, a fairly significant de
 
 ```{r}
 # Confirm best value of k for clipped k-NN
-print(knn_clipped$results |> 
-        ggplot(aes(k, RMSE)) + geom_line() + geom_point(size=1))
+print(knn_clipped$results |> ggplot(aes(k, RMSE)) + geom_line() + 
+        geom_point(size=1) + 
+        ggtitle("Clipped k-NN Tuning Results"))
 ```
 
 In this case, it does indeed seem as though 180 is the optimal value of *k* out of those investigated. The clipped k-NN model is now given an initial evaluation. As mentioned previously, both clipped and intact models are evaluated on the intact training set.
@@ -284,9 +294,12 @@ Although the clipped k-NN's training RMSE of approximately 2.970 is still margin
 
 ```{r}
 # Visualize training set predictions yielded by clipped k-NN model
-knn_train_clipped[400:434,] |> 
+print(knn_train_clipped[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
+        ggplot(aes(ind, value, color = name)) + geom_line() + 
+        geom_point(size=1.2) + 
+        labs(title="Clipped k-NN Training Evaluation", x="date", 
+             y="closing price ($)"))
 ```
 
 The predictions made by the clipped k-NN model follow the baseline predictions more closely than the intact k-NN model. However, some clipped k-NN predictions are still noticeably different from their associated baseline predictions. Based on the above visualization, it is easy to see why the training RMSE of the clipped k-NN model is so similar to that of the baseline model.
@@ -326,7 +339,10 @@ The training RMSE yielded by the intact EN model is found to be identical to the
 # Visualize training set predictions yielded by intact elastic net model
 print(enet_train_intact[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2))
+        ggplot(aes(ind, value, color = name)) + geom_line() + 
+        geom_point(size=1.2) + 
+        labs(title="Intact EN Training Evaluation", x="date", 
+             y="closing price ($)"))
 ```
 
 The above chart demonstrates that the intact EN model's predictions appear identical to their associated baseline model predictions. This must mean that all raw outputs yielded by the model, which represent changes in closing price rather than the price itself, are close to zero. This would make the intact EN model functionally similar to the baseline model, thereby yielding a similar or identical RMSE when evaluated.
@@ -364,9 +380,12 @@ The yielded training RMSE of approximately 2.974312 is the worst one out of the 
 
 ```{r}
 # Visualize training set predictions yielded by clipped elastic net model
-enet_train_clipped[400:434,] |> 
+print(enet_train_clipped[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
+        ggplot(aes(ind, value, color = name)) + geom_line() + 
+        geom_point(size=1.2) + 
+        labs(title="Clipped EN Training Evaluation", x="date", 
+             y="closing price ($)"))
 ```
 
 Although the clipped EN predictions follow their associated baseline predictions almost perfectly, slight differences can be detected at all points. Unlike what was seen with the k-NN models, predictions yielded by the clipped EN model are less similar to the baseline predictions than are the intact EN predictions. Now that that evaluation and visualization of all 4 models' performance on the training data has been completed, the models will soon be evaluated on the the test set. Although only the k-NN models outperformed the baseline model when evaluated on the intact training set, all will be investigated further for informative purposes. Before this can be done, however, the test data must be preprocessed in the same manner as the intact training data.
@@ -374,7 +393,7 @@ Although the clipped EN predictions follow their associated baseline predictions
 ```{r}
 # Difference test data
 test <- diff(as.matrix(test))
-# Scale test data using means and sds from training data
+# Scale test data using means and SDs from training data
 for(i in 1:5){test[,i] <- (test[,i] - train_means[i]) / train_sds[i]}
 
 test <- as.data.table(test)
@@ -434,8 +453,11 @@ The yielded RMSE of approximately 1.138 is worse than the baseline testing RMSE.
 
 ```{r}
 # Visualize intact k-NN model on testing data
-knn_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-  ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
+print(knn_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + 
+        geom_point(size=1.2) + 
+        labs(title="Intact k-NN Testing Evaluation", x="date", 
+             y="closing price ($)"))
 ```
 
 As seen in the intact k-NN model's initial evaluation, model predictions follow baseline predictions more than observed values, although noticable differences between model predictions and baseline predictions still exist. It appears as though their is less of a difference between the intact k-NN model's predictions and baseline predictions than what was seen in the initial evaluation.
@@ -453,8 +475,11 @@ As in the previous case, the yielded RMSE of around 1.1267 is worse than the bas
 
 ```{r}
 # Visualize clipped k-NN model on testing data
-knn_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline")) |>
-  ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
+print(knn_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + 
+        geom_point(size=1.2) + 
+        labs(title="Clipped k-NN Testing Evaluation", x="date", 
+             y="closing price ($)"))
 ```
 
 As was noted during initial evaluations, the clipped k-NN model's predictions follow the baseline prediction more closely than predictions from the intact k-NN model. Like the intact k-NN model, the clipped version seems to follow the baseline model more closely during testing than it did during initial evaluations.
@@ -473,8 +498,11 @@ The yielded RMSE of 1.118236 is marginally better than the baseline testing RMSE
 
 ```{r}
 # Visualize intact elastic net model on testing data
-enet_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline")) |>
-  ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
+print(enet_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + 
+        geom_point(size=1.2) + 
+        labs(title="Intact EN Testing Evaluation", x="date", 
+             y="closing price ($)"))
 ```
 
 As was seen during initial evaluations, the intact EN model's predictions appear indistinguishable baseline predictions, suggesting that the model's raw outputs are close to zero. Although the slight discrepancy between the intact EN model's RMSE and the baseline testing RMSE indicates that the two sets of predictions are not completely identical, this cannot be visually confirmed.
@@ -493,8 +521,11 @@ The yielded RMSE of approximately 1.120 is larger than the baseline testing RMSE
 
 ```{r}
 # Visualize clipped elastic net model on testing data
-enet_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline")) |>
-  ggplot(aes(ind, value, color = name)) + geom_line() + geom_point(size=1.2)
+print(enet_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline"))
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + 
+        geom_point(size=1.2) + 
+        labs(title="Clipped EN Testing Evaluation", x="date", 
+             y="closing price ($)"))
 ```
 
 As was noted during initial evaluations, the clipped EN model's predictions follow the baseline predictions extremely closely, but not perfectly. Also like what was seen earlier, the clipped EN model's predictions differ more from the baseline predictions than do the intact EN model's predictions, again running counter to what is observed when the k-NN models are compared.

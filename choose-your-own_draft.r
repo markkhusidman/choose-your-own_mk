@@ -14,7 +14,7 @@ library(glmnet)
 
 set.seed(42, sample.kind="Rounding")
 
-# Load stock data using quantmod package
+# Load GME data using quantmod package
 start <- as.Date("2021-01-12")
 end <- as.Date("2023-05-07")
 getSymbols("GME", from = start, to = end)
@@ -29,14 +29,16 @@ print(sprintf("Any missing values in data?: %s",any(is.na(GME))))
 print("--------------------------------------------------------")
 
 # Visualize the initial data witch a candle chart
-candleChart(GME, up.col = "blue", dn.col = "red", theme = "white")
+candleChart(GME, up.col = "blue", dn.col = "red", theme = "white", 
+            name = "Initial GME Data")
 
 # Split data into training and test sets
 training <- GME[1: 450,]
 test <- GME[451: nrow(GME),]
 
-# Visualize training data 
-candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
+# Visualize training data with a candle chart
+candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white", 
+            name = "Raw Training Data")
 
 # Create baseline random walk model for training
 observed <- as.numeric(GME$GME.Close[17:450])
@@ -44,9 +46,10 @@ baseline_pred_train <- as.numeric(GME$GME.Close[16:449])
 baseline_rmse_train <- sqrt(mean((baseline_pred_train - observed)^2))
 print(sprintf("Baseline training RMSE: %f",baseline_rmse_train))
 
-# Calculate and visualize differenced training data 
+# Calculate and visualize differenced training data
 training <- diff(as.matrix(training))
-candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white")
+candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white", 
+            name = "Differenced Training Data")
 
 # Standardize training data
 train_sds <- apply(training, 2, sd)
@@ -58,7 +61,8 @@ training <- as.data.table(training)
 
 # Visualize distribution of values in training data
 print(training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
-  geom_histogram(bins = 35) + facet_wrap(vars(name)))
+  geom_histogram(bins = 35) + facet_wrap(vars(name)) + 
+    ggtitle("Histograms of Training Data"))
 
 # Add lagged columns to training data
 add_lagged <- function(dt, n){
@@ -83,7 +87,8 @@ training_clip <- training[apply(abs(training) <= 3, 1, all),]
 
 # Visualize distribution of values in clipped training data
 print(training_clip[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
-        geom_histogram(bins = 35) + facet_wrap(vars(name)))
+        geom_histogram(bins = 35) + facet_wrap(vars(name)) + 
+        ggtitle("Histograms of Clipped Training Data"))
 
 
 # Convert raw model outputs into closing price predictions during training
@@ -126,7 +131,8 @@ knn_intact <- train(select(training, -target), training[, target],
 print(sprintf("Intact k-NN best tune: k = %s", knn_intact$bestTune))
 
 # Confirm best value of k for intact k-NN
-print(knn_intact$results |> ggplot(aes(k, RMSE)) + geom_line() + geom_point())
+print(knn_intact$results |> ggplot(aes(k, RMSE)) + geom_line() + geom_point() + 
+        ggtitle("Intact k-NN Tuning Results"))
 
 # Evaluate best intact k-NN model on intact training set
 knn_train_intact <- get_train_pred(knn_intact$finalModel)
@@ -136,7 +142,9 @@ print(sprintf("Intact k-NN training RMSE: %f", rmse))
 # Visualize training set predictions yielded by intact k-NN model
 print(knn_train_intact[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point() + 
+        labs(title="Intact k-NN Training Evaluation", x="date", 
+             y="closing price ($)"))
 
 print("--------------------")
 
@@ -148,7 +156,8 @@ knn_clipped <- train(select(training_clip, -target), training_clip[, target],
 print(sprintf("Clipped k-NN best tune: k = %s", knn_clipped$bestTune))
 
 # Confirm best value of k for clipped k-NN
-print(knn_clipped$results |> ggplot(aes(k, RMSE)) + geom_line() + geom_point())
+print(knn_clipped$results |> ggplot(aes(k, RMSE)) + geom_line() + geom_point() + 
+        ggtitle("Clipped k-NN Tuning Results"))
 
 # Evaluate best clipped k-NN model on intact training set
 knn_train_clipped <- get_train_pred(knn_clipped$finalModel)
@@ -158,7 +167,9 @@ print(sprintf("Clipped k-NN training RMSE: %f", rmse))
 # Visualize training set predictions yielded by clipped k-NN model
 print(knn_train_clipped[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point() + 
+        labs(title="Clipped k-NN Training Evaluation", x="date", 
+             y="closing price ($)"))
 
 print("--------------------")
 
@@ -185,7 +196,9 @@ print(sprintf("Intact elastic net training RMSE: %f", rmse))
 # Visualize training set predictions yielded by intact elastic net model
 print(enet_train_intact[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point() + 
+        labs(title="Intact EN Training Evaluation", x="date", 
+             y="closing price ($)"))
 
 print("--------------------")
 
@@ -212,13 +225,15 @@ print(sprintf("Clipped elastic net training RMSE: %f", rmse))
 # Visualize training set predictions yielded by clipped elastic net model
 print(enet_train_clipped[400:434,] |> 
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
-        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+        ggplot(aes(ind, value, color = name)) + geom_line() + geom_point() + 
+        labs(title="Clipped EN Training Evaluation", x="date", 
+             y="closing price ($)"))
 
 print("--------------------------------------------------------")
 
 # Difference test data
 test <- diff(as.matrix(test))
-# Scale test data using means and sds from training data
+# Scale test data using means and SDs from training data
 for(i in 1:5){test[,i] <- (test[,i] - train_means[i]) / train_sds[i]}
 
 test <- as.data.table(test)
@@ -264,7 +279,9 @@ print(sprintf("Intact k-NN test RMSE: %f", rmse))
 
 # Visualize intact k-NN model on testing data
 print(knn_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline"))
-      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point() + 
+        labs(title="Intact k-NN Testing Evaluation", x="date", 
+             y="closing price ($)"))
 
 
 # Evaluate clipped k-NN model on testing data
@@ -274,7 +291,9 @@ print(sprintf("Clipped k-NN test RMSE: %f", rmse))
 
 # Visualize clipped k-NN model on testing data
 print(knn_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline"))
-      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point() + 
+        labs(title="Clipped k-NN Testing Evaluation", x="date", 
+             y="closing price ($)"))
 
 
 # Evaluate intact elastic net model on testing data
@@ -285,7 +304,9 @@ print(sprintf("Intact elastic net test RMSE: %f", rmse))
 
 # Visualize intact elastic net model on testing data
 print(enet_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline"))
-      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point() + 
+        labs(title="Intact EN Testing Evaluation", x="date", 
+             y="closing price ($)"))
 
 
 # Evaluate clipped elastic net model on testing data
@@ -296,5 +317,7 @@ print(sprintf("Clipped elastic net test RMSE: %f", rmse))
 
 # Visualize clipped elastic net model on testing data
 print(enet_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline"))
-      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point())
+      |> ggplot(aes(ind, value, color = name)) + geom_line() + geom_point() + 
+        labs(title="Clipped EN Testing Evaluation", x="date", 
+             y="closing price ($)"))
 
