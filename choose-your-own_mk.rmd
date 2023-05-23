@@ -1,10 +1,9 @@
 ---
-title: "Choose Your Own Project"
+title: "Prediction of Stock Price Using Classical Machine Learning and Outlier Removal"
 author: "Mark Khusidman"
-date: "2023-04-09"
+date: "2023-05-23"
 output:
   pdf_document: default
-  html_document: default
 ---
 
 ```{r setup, include=FALSE}
