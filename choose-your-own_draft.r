@@ -16,7 +16,7 @@ set.seed(42, sample.kind="Rounding")
 
 # Load GME data using quantmod package
 start <- as.Date("2021-01-12")
-end <- as.Date("2023-05-07")
+end <- as.Date("2023-05-06")
 getSymbols("GME", from = start, to = end)
 
 # Drop GME.Adjusted
