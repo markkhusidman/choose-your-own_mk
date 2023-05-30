@@ -40,7 +40,7 @@ test <- GME[451: nrow(GME),]
 candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white", 
             name = "Raw Training Data")
 
-# Create baseline random walk model for training
+# Evaluate baseline random walk model on training set
 observed <- as.numeric(GME$GME.Close[17:450])
 baseline_pred_train <- as.numeric(GME$GME.Close[16:449])
 baseline_rmse_train <- sqrt(mean((baseline_pred_train - observed)^2))
@@ -241,7 +241,7 @@ test <- as.data.table(test)
 add_lagged(test, 14)
 test <- drop_na(test)
 
-# Create baseline model for testing
+# Evaluate baseline random walk model on test set
 observed <- as.numeric(GME$GME.Close[467:583])
 baseline_pred_test <- as.numeric(GME$GME.Close[466:582])
 baseline_rmse_test <- sqrt(mean((baseline_pred_test - observed)^2))
