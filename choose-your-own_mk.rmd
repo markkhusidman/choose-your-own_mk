@@ -122,13 +122,24 @@ training <- as.data.table(training)
 Before continuing, it is useful to visualize the distribution of values found in the training set. This can be accomplished through the use of histograms.
 
 ```{r}
-# Visualize distribution of values in training data
-print(training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
+# Visualize distribution of values in training data with histograms
+training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
   geom_histogram(bins = 35) + facet_wrap(vars(name)) + 
-    ggtitle("Histograms of Training Data"))
+  ggtitle("Histograms of Training Data")
 ```
 
-All of the columns have roughly normal distributions, although the volume column's peak appears significantly sharper than would be expected for normally distributed data. There also seems to be a right skew in columns which are price-related, although this is less prominent in *GME.Low*. Finally, it can be noted that all columns appear to contain outliers.
+All of the columns seem to have roughly bell-shaped distributions, although their peaks appears significantly sharper than would be expected for normally distributed data. This is especially true for *GME.Volume*. There also seems to be a right skew in columns which are price-related, although this is less prominent in *GME.Low*. Finally, it can be noted that all columns appear to contain outliers.
+
+Another way to visualize the distribution of training data is through the use of QQ plots. These will yield a better understanding of the degree to which the data are normally distributed.
+
+```{r}
+# Visualize distribution of values in training data with QQ plots
+training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(sample = value)) +
+  geom_qq() + geom_abline() + facet_wrap(vars(name)) + 
+  ggtitle("QQ Plots of Training Data")
+```
+
+The above visualization demonstrates clear differences between normally distributed data and the training data. Specifically, all columns in the training set appear to have distributions with heavier tails than what would be found in a normal distribution.
 
 Next, 14 lagged columns are created in the training dataset for each of the 5 columns currently present. This means that every row now contains 15 days worth of opening price, closing price, daily high, daily low, and trading volume data.
 
@@ -170,7 +181,7 @@ training_clip <- training[apply(abs(training) <= 3, 1, all),]
 Note that this operation also removes rows with a target value outside the specified range. From this point forward, the training dataset subjected to outlier removal and its associated models will be referred to as "clipped", while the dataset with no outlier removal and its associated models will be referred to as "intact". The intact training set currently contains 434 rows, while the clipped training set contains 367. Some insight can be gained into the result of the outlier removal process by visualizing the clipped dataset's value distributions. This is done using the same code as before:
 
 ```{r}
-# Visualize distribution of values in clipped training data
+# Visualize distribution of values in clipped training data with histograms
 print(training_clip[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
         geom_histogram(bins = 35) + facet_wrap(vars(name)) + 
         ggtitle("Histograms of Clipped Training Data"))
