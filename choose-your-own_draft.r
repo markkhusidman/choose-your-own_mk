@@ -60,12 +60,17 @@ for(i in 1:5){training[,i] <- (training[,i] - train_means[i]) / train_sds[i]}
 training <- as.data.table(training)
 
 # Visualize distribution of values in training data with histograms
-print(training[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
+print(training |> pivot_longer(everything()) |> ggplot(aes(value)) +
   geom_histogram(bins = 35) + facet_wrap(vars(name)) + 
     ggtitle("Histograms of Training Data"))
 
-# Visualize distribution of values in training data with QQ plots
-print(training[, 1:5] |> pivot_longer(everything()) |> 
+# Visualize outliers in training data with box plots
+print(training |> pivot_longer(everything()) |> ggplot(aes(value)) +
+        geom_boxplot() + facet_wrap(vars(name)) + 
+        ggtitle("Box Plots of Training Data"))
+
+# Compare distribution of values in training data to normal distribution
+print(training |> pivot_longer(everything()) |> 
         ggplot(aes(sample = value)) +
         geom_qq() + geom_abline() + facet_wrap(vars(name)) + 
         ggtitle("QQ Plots of Training Data"))
