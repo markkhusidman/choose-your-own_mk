@@ -51,6 +51,11 @@ training <- diff(as.matrix(training))
 candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white", 
             name = "Differenced Training Data")
 
+# Visualize closeup of differenced closing price data in training set
+print(qplot(index(GME$GME.Close[151:251]), training[150:250, 1], geom = "line", 
+      xlab = "Date", ylab = "Change in Closing Price ($)", 
+      main = "Closeup of Differenced Closing Price in Training Set"))
+
 # Standardize training data
 train_sds <- apply(training, 2, sd)
 train_means <- colMeans(training)
@@ -246,7 +251,7 @@ print("--------------------------------------------------------")
 test <- diff(as.matrix(test))
 # Scale test data using means and SDs from training data
 for(i in 1:5){test[,i] <- (test[,i] - train_means[i]) / train_sds[i]}
-
+# Convert test data to data.table object
 test <- as.data.table(test)
 # Add lagged columns to test data
 add_lagged(test, 14)

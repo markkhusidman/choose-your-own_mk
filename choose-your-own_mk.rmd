@@ -29,6 +29,8 @@ set.seed(42, sample.kind="Rounding")
 
 For reasons that are not difficult to understand, the ability to predict stock price has long been coveted. Although much time has been spent devising techniques to assist in this pursuit, its mastery has proven to be elusive for a number of reasons. The processes underlying changes in a given stock's price are usually both complex and dynamic. Movements in stock price are often subject to a significant amount of noise, especially when viewed at higher granularities. Outliers are also commonly present in price data. Finally, the quantity of data for a particular stock are often limited, and data taken from one stock are rarely applicable when modeling another. Because these inherent difficulties still pose a significant barrier to stock price prediction, further investigation into this subject is warranted. Machine learning (ML) represents a relatively new and promising approach to the modeling of stock price. This study aims to test the ability of relatively simple ML algorithms, used in combination with basic outlier removal, to model and predict a particular stock's closing price. The stock in question belongs to a video game retailer named Gamestop and trades under the symbol "GME". GME has itself been the subject of a significant amount of attention over the past couple of years due to perceived irregularities in its underlying trading patterns, making it a particularly interesting candidate for exploration. The GME data used in this study have a frequency of 1 observation per day and encompass all of the trading days from January 12th, 2021 through May 5th, 2023, of which there are 583. This represents all available data occurring after the aforementioned irregularities began. The data consist of 5 variables: *GME.Open* represents each day's opening price, *GME.Close* represents each day's closing price, *GME.Low* represents the lowest price of each day, *GME.High* represents the highest price of each day, and *GME.Volume* represents the number of GME shares traded on each day. In summary, the initial GME dataset used in this study contains 583 rows of 5 columns. Data modeling is performed using k-nearest-neighbors (k-NN) and elastic net (EN). Each algorithm is used with both an "intact" subset of the GME data and a "clipped" subset which had gone through outlier removal, yielding a total of 4 models to be evaluated.
 
+| 
+
 ## Methods
 
 After setting start and end dates, GME data is loaded directly into the environment using the "quantmod" package. The resulting data begins at the start date and encompasses all days up to, but not including, the end date.
@@ -70,7 +72,7 @@ training <- GME[1: 450,]
 test <- GME[451: nrow(GME),]
 ```
 
-Rather than splitting the data via the removal of a random sample, the initial dataset is split into two contiguous groups. A contiguous set of test data is better than a random sample at approximating the characteristics of future input data, thus leading to a better estimate of a model's generalization error. The training set yielded from this split is pictured below:
+Rather than splitting the data via the removal of a random sample, the initial dataset is split into two contiguous groups. A contiguous set of test data is better than a random sample at approximating the characteristics of future input data, thus leading to a better estimate of a model's generalization error. The training set yielded from this split is pictured below.
 
 ```{r}
 # Visualize training data with a candle chart
@@ -97,7 +99,9 @@ After the baseline model is defined, preprocessing of the training set begins. F
 training <- diff(as.matrix(training))
 ```
 
-The resulting array has one fewer row than before. Now that the data have been differenced, it is useful to again visualize them. A true candle chart of these data cannot be made because the meaning of individual candles would be ambiguous. However, the previously used "candleChart" function can still utilize the differenced data to create a chart which, like before, gives a decent impression of how the data are shaped over time.
+The resulting array has one fewer row than before.
+
+Now that the data have been differenced, it is useful to again visualize them. A true candle chart of these data cannot be made because the meaning of individual candles would be ambiguous. However, the previously used "candleChart" function can still utilize the differenced data to create a chart which, like before, gives a decent impression of how the data are shaped over time.
 
 ```{r}
 # Visualize differenced training data
@@ -105,7 +109,20 @@ candleChart(as.xts(training), up.col = "blue", dn.col = "red", theme = "white",
             name = "Differenced Training Data")
 ```
 
-Although the differenced data still aren't perfectly stationary, they are far more stationary than the non-differenced data. Next, the training set is standardized. This is done by centering each column before dividing the column by its standard deviation.
+Although the differenced data still aren't perfectly stationary, they are far more so than the non-differenced data.
+
+The general shape of the differenced data can be better appreciated by visualizing a subset of the *GME.Close* column. The shape of this column is fairly representative of the other differenced input columns.
+
+```{r}
+# Visualize closeup of differenced closing price data in training set
+qplot(index(GME$GME.Close[151:251]), training[150:250, 1], geom = "line", 
+      xlab = "Date", ylab = "Change in Closing Price ($)", 
+      main = "Closeup of Differenced Closing Price in Training Set")
+```
+
+Visualizing the differenced *GME.Close* column is also useful because it will be used as the target during model training. This will be discussed in more detail later.
+
+Next, the training set is standardized. This is done by centering each column before dividing the column by its standard deviation.
 
 ```{r}
 # Standardize training data
@@ -130,7 +147,9 @@ training |> pivot_longer(everything()) |> ggplot(aes(value)) +
   ggtitle("Histograms of Training Data")
 ```
 
-All of the columns seem to have roughly bell-shaped distributions, although their peaks appear significantly sharper than would be expected for normally distributed data. This is especially true for *GME.Volume*. Although it is clear that outliers are present, the chart's rendering does not allow them to be easily distinguished. As such, box plots are used to better visualize the training data's outliers.
+All of the columns seem to have roughly bell-shaped distributions, although their peaks appear significantly sharper than would be expected for normally distributed data. This is especially true for *GME.Volume*.
+
+Although it is clear that outliers are present, the previous chart's rendering does not allow them to be easily distinguished. As such, box plots are used to better visualize the training data's outliers.
 
 ```{r}
 # Visualize outliers in training data with box plots
@@ -139,7 +158,7 @@ training |> pivot_longer(everything()) |> ggplot(aes(value)) +
   ggtitle("Box Plots of Training Data")
 ```
 
-In the above plots, outliers are defined as values which exceed a certain distance from their nearest hinge (The hinges are comprised of the 1st or the 3rd quartiles). In this case, the distance in question is equal to 1.5 \* IQR, where IQR is the interquartile range. It is important to note that this method of defining outliers differs from the method which will be used during outlier removal.
+In the above plots, outliers are defined as values which exceed a certain distance from their nearest hinge (The hinges are comprised of the 1st and the 3rd quartiles). In this case, the distance in question is equal to 1.5 \* IQR, where IQR is the interquartile range. It is important to note that this method of defining outliers differs from the method which will be used during outlier removal.
 
 Another way to visualize the distribution of training data is through the use of QQ plots. These will yield a better understanding of the degree to which the data are normally distributed.
 
@@ -184,7 +203,7 @@ It should be noted that the process of adding lagged columns results in 14 rows 
 training <- drop_na(training)
 ```
 
-At this point, a separate training dataset is created by subjecting the current training data to an outlier removal process. Specifically, rows containing values which are more than 3 standard deviations from their respective mean are removed. Because the training data are already scaled, this is easily done.
+At this point, a separate training dataset is created by subjecting the current training data to an outlier removal process. Specifically, rows containing values which are more than 3 standard deviations from their respective means are removed. Because the training data are already scaled, this is easily done.
 
 ```{r}
 # Create separate training set with clipped outliers
@@ -193,7 +212,7 @@ training_clip <- training[apply(abs(training) <= 3, 1, all),]
 
 Note that this operation also removes rows with a target value outside the specified range. From this point forward, the training dataset subjected to outlier removal and its associated models will be referred to as "clipped", while the dataset with no outlier removal and its associated models will be referred to as "intact". The intact training set currently contains 434 rows, while the clipped training set contains 367.
 
-Some insight can be gained into the result of the outlier removal process by using histograms to visualize the clipped data's distribution. This is done using the same code as before:
+Some insight can be gained into the result of the outlier removal process by using histograms to visualize the clipped data's distribution. This is done using the same code as before.
 
 ```{r}
 # Visualize distribution of values in clipped training data with histograms
@@ -204,7 +223,7 @@ print(training_clip[, 1:5] |> pivot_longer(everything()) |> ggplot(aes(value)) +
 
 Based on the above histograms, it would appear as though the outlier removal process was successful to a fair extent. There do appear to be remaining outliers, but they are much less extreme than many of the outliers seen previously in the intact data.
 
-Now that the clipped training set has been created, model tuning can soon begin. As mentioned previously, both the k-NN and EN models will be utilized for this purpose. The k-NN algorithm involves first selecting a predefined number of "neighboring" input vectors which are most similar to the input being used for prediction. For continuous data, similarity is generally defined as the euclidean distance between two vectors. The number of similar inputs used for prediction is referred to as *k*. One the most similar inputs are identified, predictions are made by averaging the target values associated with said similar inputs. Because the model makes no underlying assumptions about the relationship between inputs and outputs (apart from the idea that similar inputs will yield similar outputs), it can prove useful in modeling data where this relationship is complex. As the relationship between inputs and outputs is not readily apparent in the GME data, this quality may be useful. Implementing the EN model means fitting a regularized linear model to the data. The penalty applied to the parameters is calculated via a mixture of L1 and L2 normalization. As such, the EN model is often thought of as a mixture between Ridge regression and Lasso regression. The extent to which one form of regularization dominates over the other is controlled by the hyperparameter *alpha*. A value close to 0 gives more weight to the L2 penalty, while a value close to 1 give more weight to the L1 penalty. The final penalty value is scaled with the *lambda* hyperparameter, which thereby controls the extent of regularization. Regularized linear models are particularly useful when there is a high degree of colinearity among the input columns. This is because unregularized linear models are prone to overfitting when trained on such data. Because there is fairly high degree of colinearity between input columns which are associated with the same time-step, this may be a useful quality. Although the EN model ultimately entails fitting a linear model to the data, the inherent generalization involved in such a simplification may offer its own protection against overfitting.
+Now that the clipped training set has been created, model tuning can soon begin. As mentioned previously, both the k-NN and EN models will be utilized for this purpose. The k-NN algorithm involves first selecting a predefined number of "neighboring" input vectors which are most similar to the input being used for prediction. For continuous data, similarity is generally defined as the euclidean distance between two vectors. The number of similar inputs used for prediction is referred to as *k*. One the most similar inputs are identified, predictions are made by averaging the target values associated with said similar inputs. Because the model makes no underlying assumptions about the relationship between inputs and outputs (apart from the idea that similar inputs will yield similar outputs), it can prove useful in modeling data where this relationship is complex. As the relationship between inputs and outputs is not readily apparent in the GME data, this quality may be useful. Implementing the EN model means fitting a regularized linear model to the data. The penalty applied to the parameters is calculated via a mixture of L1 and L2 normalization. As such, the EN model is often thought of as a mixture between Ridge regression and Lasso regression. The extent to which one form of regularization dominates over the other is controlled by the hyperparameter *alpha*. A value close to 0 gives more weight to the L2 penalty, while a value close to 1 gives more weight to the L1 penalty. The final penalty value is scaled with the *lambda* hyperparameter, which thereby controls the extent of regularization. Regularized linear models are particularly useful when there is a high degree of colinearity among the input columns. This is because unregularized linear models are prone to overfitting when trained on such data. Because there is fairly high degree of colinearity between input columns which are associated with the same time-step, this may be a useful quality. Although the EN model ultimately entails fitting a linear model to the data, the inherent generalization involved in such a simplification may offer its own protection against overfitting.
 
 One final step to be undertaken before model tuning begins is the creation of a function which turns raw model outputs into closing price predictions. Recall that since the models are being trained on differenced data, their predictions correspond to changes in closing price, rather than the price itself. To create final predictions, each model output must be added to the observed closing value occurring directly before the predicted time-step. Because of the single row lost when differencing the data, the 14 rows lost when creating lagged columns, and the single row lost when adding a target column, the first 16 values of input data are not used as observations when evaluating models.
 
@@ -251,7 +270,9 @@ knn_intact <- train(select(training, -target), training[, target],
 sprintf("Intact k-NN best tune: k = %s", knn_intact$bestTune)
 ```
 
-The greatest value of *k* investigated during tuning is 200. A limit must be imposed because using too great a fraction of the training data to generate outputs will inhibit variety in the model's predictions. As shown above, the best value of *k* is in this case found to be 128. This can be verified by plotting the relationship between the values of *k* investigated during tuning and their associated RMSEs.
+The greatest value of *k* investigated during tuning is 200. A limit must be imposed because using too great a fraction of the training data to generate outputs will inhibit variety in the model's predictions. As shown above, the best value of *k* is in this case found to be 128.
+
+The k-NN tuning process can be visualized by plotting the relationship between the values of *k* investigated and their associated RMSEs.
 
 ```{r}
 # Confirm best value of k for intact k-NN
@@ -281,8 +302,8 @@ print(knn_train_intact[400:434,] |>
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
         ggplot(aes(ind, value, color = name)) + geom_line() + 
         geom_point(size=1.2) + 
-        labs(title="Intact k-NN Training Evaluation", x="date", 
-             y="closing price ($)"))
+        labs(title="Intact k-NN Training Evaluation", x="Date", 
+             y="Closing Price ($)"))
 ```
 
 Based on the above visualization, it is apparent that the predicted values yielded by this model more closely follow the baseline predictions than the observations. However, there are multiple points where the intact k-NN predictions and the baseline predictions significantly differ. The similarity in training RMSE between the baseline model and the intact k-NN model appears to be supported by this visualization.
@@ -298,7 +319,9 @@ knn_clipped <- train(select(training_clip, -target), training_clip[, target],
 sprintf("Clipped k-NN best tune: k = %s", knn_clipped$bestTune)
 ```
 
-In this case, the best value for *k* is found to be 180, a fairly significant departure from the 128 neighbors used in the intact k-NN model. As with the previous k-NN model, the relationship between the value of *k* and its associated RMSE is visualized.
+In this case, the best value for *k* is found to be 180, a fairly significant departure from the 128 neighbors used in the intact k-NN model.
+
+As with the previous k-NN model, the relationship between the value of *k* and its associated RMSE is visualized.
 
 ```{r}
 # Confirm best value of k for clipped k-NN
@@ -307,7 +330,9 @@ print(knn_clipped$results |> ggplot(aes(k, RMSE)) + geom_line() +
         ggtitle("Clipped k-NN Tuning Results"))
 ```
 
-In this case, it does indeed seem as though 180 is the optimal value of *k* out of those investigated. The clipped k-NN model is now given an initial evaluation. As mentioned previously, both clipped and intact models are evaluated on the intact training set.
+It does indeed appear as though 180 is the optimal value of *k* out of those investigated.
+
+The clipped k-NN model is now given an initial evaluation. As mentioned previously, both clipped and intact models are evaluated on the intact training set.
 
 ```{r}
 # Evaluate best clipped k-NN model on intact training set
@@ -326,8 +351,8 @@ print(knn_train_clipped[400:434,] |>
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
         ggplot(aes(ind, value, color = name)) + geom_line() + 
         geom_point(size=1.2) + 
-        labs(title="Clipped k-NN Training Evaluation", x="date", 
-             y="closing price ($)"))
+        labs(title="Clipped k-NN Training Evaluation", x="Date", 
+             y="Closing Price ($)"))
 ```
 
 The predictions made by the clipped k-NN model follow the baseline predictions more closely than the intact k-NN model. However, some clipped k-NN predictions are still noticeably different from their associated baseline predictions. Based on the above visualization, it is easy to see why the training RMSE of the clipped k-NN model is so similar to that of the baseline model.
@@ -351,7 +376,9 @@ sprintf("Intact elastic net best tune: alpha = %s, lambda = %s",
               enet_intact$bestTune[1], best_lambda_intact)
 ```
 
-In this case, the optimal value of *alpha* is found to be 1. This means that the intact EN model is functionally equivalent to a Lasso regression model. The optimal value of lambda in this instance is found to be around 0.0995. Next, the intact EN model is given its initial evaluation.
+In this case, the optimal value of *alpha* is found to be 1. This means that the intact EN model is functionally equivalent to a Lasso regression model. The optimal value of lambda in this instance is found to be around 0.0995.
+
+Next, the intact EN model is given its initial evaluation.
 
 ```{r}
 # Evaluate best intact elastic net model on intact training set
@@ -363,7 +390,7 @@ sprintf("Intact elastic net training RMSE: %f", rmse)
 
 The training RMSE yielded by the intact EN model is found to be identical to the baseline training RMSE of 2.974267.
 
-As before, the model's predictions are visualized.
+As before, the intact EN model's predictions are visualized.
 
 ```{r}
 # Visualize training set predictions yielded by intact elastic net model
@@ -371,8 +398,8 @@ print(enet_train_intact[400:434,] |>
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
         ggplot(aes(ind, value, color = name)) + geom_line() + 
         geom_point(size=1.2) + 
-        labs(title="Intact EN Training Evaluation", x="date", 
-             y="closing price ($)"))
+        labs(title="Intact EN Training Evaluation", x="Date", 
+             y="Closing Price ($)"))
 ```
 
 The above chart demonstrates that the intact EN model's predictions appear identical to their associated baseline model predictions. This must mean that all raw outputs yielded by the model, which represent changes in closing price rather than the price itself, are close to zero. This would make the intact EN model functionally similar to the baseline model, thereby yielding a similar or identical RMSE when evaluated.
@@ -398,7 +425,7 @@ sprintf("Clipped elastic net best tune: alpha = %s, lambda = %s",
 
 As in the case of the intact EN model, the value of *alpha* is chosen to be 1. This means that, like the intact version, the clipped EN model functions as a Lasso regression model. The optimal value of *lambda* in this case is found to be around 0.0579, representing an approximately 42% decrease when compared to the intact EN model's optimal *lambda*.
 
-The initial evaluation of this model is now performed.
+The initial evaluation of the clipped EN model is now performed.
 
 ```{r}
 # Evaluate best clipped elastic net model on intact training set
@@ -418,20 +445,20 @@ print(enet_train_clipped[400:434,] |>
         pivot_longer(cols = c("observed", "pred", "baseline")) |> 
         ggplot(aes(ind, value, color = name)) + geom_line() + 
         geom_point(size=1.2) + 
-        labs(title="Clipped EN Training Evaluation", x="date", 
-             y="closing price ($)"))
+        labs(title="Clipped EN Training Evaluation", x="Date", 
+             y="Closing Price ($)"))
 ```
 
-Although the clipped EN predictions follow their associated baseline predictions almost perfectly, slight differences can be detected at all points. Unlike what was seen with the k-NN models, predictions yielded by the clipped EN model are less similar to the baseline predictions than are the intact EN predictions. Now that that evaluation and visualization of all 4 models' performance on the training data has been completed, the models will soon be evaluated on the the test set. Although only the k-NN models outperformed the baseline model when evaluated on the intact training set, all will be investigated further for informative purposes.
+Although the clipped EN predictions follow their associated baseline predictions almost perfectly, slight differences can be detected at all points. Unlike what was seen with the k-NN models, predictions yielded by the clipped EN model are less similar to the baseline predictions than are the intact EN predictions.
 
-Before this can be done, however, the test data must be preprocessed in the same manner as the intact training data.
+Now that that evaluation and visualization of all 4 models' performance on the training data has been completed, the models will soon be evaluated on the the test set. Although only the k-NN models outperformed the baseline model when evaluated on the intact training set, all will be investigated further for informative purposes. Before this can be done, however, the test data must be preprocessed in the same manner as the intact training data.
 
 ```{r}
 # Difference test data
 test <- diff(as.matrix(test))
 # Scale test data using means and SDs from training data
 for(i in 1:5){test[,i] <- (test[,i] - train_means[i]) / train_sds[i]}
-
+# Convert test data to data.table object
 test <- as.data.table(test)
 # Add lagged columns to test data
 add_lagged(test, 14)
@@ -450,7 +477,7 @@ baseline_rmse_test <- sqrt(mean((baseline_pred_test - observed)^2))
 print(sprintf("Baseline test RMSE: %f",baseline_rmse_test))
 ```
 
-The baseline testing RMSE of approximately 1.118 is much smaller than the baseline training RMSE. This is likely because the testing data has a lower variance than the training data.
+The baseline testing RMSE of approximately 1.118 is much smaller than the baseline training RMSE. This is likely because the testing data have a lower variance than the training data.
 
 The final step before the models can be evaluated on the test set is the creation of a new function to handle raw model outputs. It is essentially the same as the function used when handling training data predictions; The only differences are that the final prediction is removed (this was not necessary during training due to the addition of the *target* column), a different set of closing values are used for addition with raw model outputs, and some minor syntactical changes stemming from the lack of a *target* column in the testing data.
 
@@ -479,6 +506,8 @@ get_test_pred <- function(model, lambda = NULL){
 }
 ```
 
+| 
+
 ## Results
 
 The models are evaluated on the test data in a very similar manner to their evaluation on the training data. First to be evaluated is the intact k-NN model.
@@ -499,8 +528,8 @@ The intact k-NN model's performance is further examined with a visualization as 
 print(knn_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline"))
       |> ggplot(aes(ind, value, color = name)) + geom_line() + 
         geom_point(size=1.2) + 
-        labs(title="Intact k-NN Testing Evaluation", x="date", 
-             y="closing price ($)"))
+        labs(title="Intact k-NN Testing Evaluation", x="Date", 
+             y="Closing Price ($)"))
 ```
 
 As seen in the intact k-NN model's initial evaluation, model predictions follow baseline predictions more than observed values, although noticeable differences between model predictions and baseline predictions still exist. It appears as though their is less of a difference between the intact k-NN model's predictions and baseline predictions than what was seen in the initial evaluation.
@@ -523,8 +552,8 @@ The clipped k-NN model's testing predictions are visualized below.
 print(knn_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline"))
       |> ggplot(aes(ind, value, color = name)) + geom_line() + 
         geom_point(size=1.2) + 
-        labs(title="Clipped k-NN Testing Evaluation", x="date", 
-             y="closing price ($)"))
+        labs(title="Clipped k-NN Testing Evaluation", x="Date", 
+             y="Closing Price ($)"))
 ```
 
 As was noted during initial evaluations, the clipped k-NN model's predictions follow the baseline prediction more closely than predictions from the intact k-NN model. Like the intact k-NN model, the clipped version seems to follow the baseline model more closely during testing than it did during initial evaluations.
@@ -548,8 +577,8 @@ As in the previous cases, the intact EN model's predictions are shown below.
 print(enet_test_intact |> pivot_longer(cols = c("observed", "pred", "baseline"))
       |> ggplot(aes(ind, value, color = name)) + geom_line() + 
         geom_point(size=1.2) + 
-        labs(title="Intact EN Testing Evaluation", x="date", 
-             y="closing price ($)"))
+        labs(title="Intact EN Testing Evaluation", x="Date", 
+             y="Closing Price ($)"))
 ```
 
 As was seen during initial evaluations, the intact EN model's predictions appear indistinguishable baseline predictions, suggesting that the model's raw outputs are close to zero. Although the slight discrepancy between the intact EN model's RMSE and the baseline testing RMSE indicates that the two sets of predictions are not completely identical, this cannot be visually confirmed.
@@ -573,11 +602,13 @@ The clipped EN model's predictions are visualized below.
 print(enet_test_clipped |> pivot_longer(cols = c("observed", "pred", "baseline"))
       |> ggplot(aes(ind, value, color = name)) + geom_line() + 
         geom_point(size=1.2) + 
-        labs(title="Clipped EN Testing Evaluation", x="date", 
-             y="closing price ($)"))
+        labs(title="Clipped EN Testing Evaluation", x="Date", 
+             y="Closing Price ($)"))
 ```
 
 As was noted during initial evaluations, the clipped EN model's predictions follow the baseline predictions extremely closely, but not perfectly. Also like what was seen earlier, the clipped EN model's predictions differ more from the baseline predictions than do the intact EN model's predictions, again running counter to what is observed when the k-NN models are compared.
+
+| 
 
 ## Conclusion
 
@@ -585,4 +616,4 @@ Numerous steps were taken over the course of this study to train and evaluate ML
 
 Before the final performance of the ML models is discussed, there are are a few observations regarding their behavior worth mentioning. First, all 4 models appeared to be severely underfitted. This is most prominent when considering the intact EN model, where all raw outputs were extremely close to zero. Although visualizations where final predictions of closing price closely follow baseline predictions may have appeared to be instances of overfitting, it is important to remember that the raw model outputs used to calculate final predictions correspond to changes in closing price, rather than the closing price itself. Although it was thought that colinearity among model inputs would make the models prone to overfitting, this seemed to be outweighed by the complex relationship between model inputs and their associated target values. Another observation worth noting is the effect of outlier removal on k-NN model performance. During initial evaluations, it appeared as though outlier removal hindered model performance. During testing, however, a small improvement in RMSE was seen when comparing the clipped k-NN model to the intact version. This is likely because the the clipped training set is more representative of the relatively low-variance test set than is the intact training set. The fact that clipped k-NN predictions appeared to follow baseline predictions more closely than do intact k-NN predictions suggests that, in this case, outlier removal served as a regularizing force on k-NN models. It is interesting to note that this relationship did not seem to be present in the case of EN models. The intact EN model made predictions which were more in accordance with baseline predictions than those made by the clipped EN model. This is likely because of the EN model's linear nature; The greater presence of both positive and negative outliers in the intact training set forced the model to shrink its predictions toward zero.
 
-Regarding the final performance of the ML models, none of the 4 models explored in this study were capable of significantly outperforming the baseline random walk model when evaluated on the test data. Although the intact EN model testing RMSE is technically smaller than the baseline testing RMSE, the difference between them is likely insignificant. The potential effectiveness of all models was likely reduced due to the large difference in variance between the training data and the test data. The non-stationary relationship between variance and time within the training data likely interfered with successful modeling as well. Another factor contributing to modeling difficulty was the high degree of noise present in the differenced training data. This is a known drawback of making the data more stationary via differencing. Another clear limitation of the present study is the relatively small quantity of data used. This may be addressed in the future when more data is available. Finding GME data with a higher frequency could also potentially mitigate this issue. It should also be noted that the outlier removal method used in this study is very basic. The use of a more advanced outlier removal method such as local outlier factor (LOF) may serve to improve results in future research. Another limitation in this study is that only 2 types of ML models were explored. Future research should consider a wider array of model types.
+Regarding the final performance of the ML models, none of the 4 models explored in this study were capable of significantly outperforming the baseline random walk model when evaluated on the test data. Although the intact EN model testing RMSE is technically smaller than the baseline testing RMSE, the difference between them is likely insignificant. The potential effectiveness of all models was likely reduced due to the large difference in variance between the training data and the test data. The non-stationary relationship between variance and time within the training data likely interfered with successful modeling as well. Another factor contributing to modeling difficulty was the high degree of noise present in the differenced training data. This is a known drawback of making the data more stationary via differencing. Another clear limitation of the present study is the relatively small quantity of data used. This may be addressed in the future when more data are available. Finding GME data with a higher frequency could also potentially mitigate this issue. It should also be noted that the outlier removal method used in this study is very basic. The use of a more advanced outlier removal method such as local outlier factor (LOF) may serve to improve results in future research. Another limitation in this study is that only 2 types of ML models were explored. Future research should consider a wider array of model types.
